@@ -1,0 +1,20 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Runtime scratch
+*.log
+.DS_Store
+
+# Local coverage / build output
+coverage/
+.nyc_output/
+dist/
+build/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+Thumbs.db

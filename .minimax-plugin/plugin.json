@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "firefox-browser",
+  "displayName": "Firefox 浏览器控制",
+  "version": "2.2.0",
+  "description": "让 Agent 通过 WebDriver BiDi 驱动真实 Firefox：导航、点击、输入、读取页面文本与截图。复用用户 Firefox profile 的登录态。可选启用验证码求解（Turnstile / reCAPTCHA / hCaptcha / GeeTest 滑块 / PoW / 百度旋转验证码）。",
+  "author": "corvel",
+  "icon": "icon.png",
+  "darkIcon": "icon-dark.png",
+  "category": "Code",
+  "exampleQueries": [
+    "用 Firefox 打开 example.com 并截图。",
+    "在 Firefox 里搜索“hello”并把结果页文本读给我。",
+    "用 Firefox 打开这个有验证码的页面，把验证码解开再继续。"
+  ],
+  "apps": [],
+  "mcpServers": [
+    "servers.mcp.json"
+  ],
+  "skills": [
+    "skills/firefox-browser/SKILL.md"
+  ],
+  "agents": [],
+  "hooks": []
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "mcpServers": {
+    "firefox-browser": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./server.js"],
+      "description": "驱动真实 Firefox（WebDriver BiDi）的本地 MCP 服务",
+      "timeout": 300000
+    }
+  }
+}
