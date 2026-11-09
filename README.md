@@ -342,6 +342,26 @@ All settings are environment variables. The MCP server inherits `HOME`,
 | `FIREFOX_BROWSER_PRIVILEGED`       | `0`                     | Set to `1` to launch with `--remote-enable-system-access`, which unlocks the privileged chrome:// contexts (`about:preferences`, `about:addons`). |
 | `FIREFOX_BROWSER_PREFS`            | —                       | JSON object of Firefox preferences to apply to the **profile copy** only, e.g. `{"privacy.resistFingerprinting":true}`.                           |
 | `FIREFOX_BROWSER_SCRIPT_ROOTS`     | `~/.mavis/ff-workspace` | Colon-separated directories `browser_run_script` may read scripts from.                                                                           |
+| `FIREFOX_BROWSER_DIALOG_SETTLE_MS` | `40`                    | How long an action waits for a dialog event that may still be in flight. See below.                                                               |
+
+### The dialog settle window
+
+Every action reports whether a dialog appeared while it ran. The plugin used
+to do that by waiting a **fixed 250ms** for an event that might never arrive,
+which is why every action used to cost ~270ms.
+
+It does not work that way any more. The `browsingContext.userPromptOpened`
+event arrives _before_ the action's own command returns, so the plugin counts
+dialogs with an epoch counter: an action captures the counter before it runs
+and compares afterwards. If it moved, a dialog opened and the action waits
+only for the auto-handler to close it. If it did not move, the action waits
+the small window above for an event that might still be in flight.
+
+Measured on Firefox 140 (5 clicks, no dialog): **272.8ms → 66.6ms** mean.
+
+The window is configurable for pages that open their dialog unusually late.
+Raising it makes every action slower, so raise it only if a dialog is being
+missed; the default is enough for normal pages.
 
 ### Where the profile copy lives
 
