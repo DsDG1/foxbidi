@@ -2,8 +2,8 @@
 // Local plugin package validation (plugin-creator "Validate before reporting success").
 // Run from the plugin root: node tools/validate-package.mjs
 
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
-import { join, resolve, relative, dirname } from 'node:path'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { join, resolve, relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
 const ROOT = resolve(process.argv[2] || '.')
@@ -47,7 +47,6 @@ function findDuplicateKey(text) {
   let inString = false
   let escaped = false
   let isKey = false
-  const seen = []
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]
     if (inString) {

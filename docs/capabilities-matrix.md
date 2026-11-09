@@ -18,20 +18,28 @@
 | 能力                       | 需要                   | 对应 BiDi                                                                                                    | 缺了会怎样                                                                        |
 | -------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | JS 弹窗处理                | FF **118** / 119       | `browsingContext.userPromptOpened` / `userPromptClosed` / `handleUserPrompt`                                 | 弹窗会**阻塞页面**，后续命令全部超时。插件会在 `browser_status` 里标 `knownRisk`  |
-| 历史前进后退               | FF **122**             | `browsingContext.traverseHistory`                                                                            | 未接入                                                                            |
+| 视口覆盖                   | FF **117**             | `browsingContext.setViewport`                                                                                | `browser_set_viewport` 返回 `capability_unavailable`                              |
+| 标签页重载                 | FF **119**             | `browsingContext.reload`                                                                                     | `browser_reload` 返回 `capability_unavailable`                                    |
 | 用户激活                   | FF **121**             | `script.callFunction{userActivation}`                                                                        | 未接入                                                                            |
+| 历史前进后退               | FF **122**             | `browsingContext.traverseHistory`                                                                            | `browser_back` / `browser_forward` 返回 `capability_unavailable`                  |
 | 容器（多身份）             | FF **124**             | `browser.createUserContext` / `getUserContexts` / `removeUserContext`，`browsingContext.create{userContext}` | `browser_context` 返回 `capability_unavailable`                                   |
 | Cookie 读写                | FF **124**             | `storage.getCookies` / `setCookie`                                                                           | `browser_cookie` 返回 `capability_unavailable`                                    |
 | 请求拦截                   | FF **124**             | `network.addIntercept` / `continueRequest` / `failRequest`                                                   | `browser_intercept` 返回 `capability_unavailable`                                 |
 | 扩展管理                   | FF **137**             | `webExtension.install` / `uninstall`                                                                         | `browser_extension` 返回 `capability_unavailable`                                 |
 | 特权（chrome://）上下文    | FF **138**             | `--remote-enable-system-access` + `browsingContext.getTree{root:true}`                                       | 读不了 `about:preferences` / `about:addons`                                       |
-| 下载事件                   | FF **133**（待实测）   | `browsingContext.downloadWillBegin` / `downloadEnd`                                                          | 未接入                                                                            |
+| 下载事件（开始）           | FF **144**（实测）     | `browsingContext.downloadWillBegin`                                                                          | 未接入                                                                            |
+| 下载事件（结束）           | FF **145**（实测）     | `browsingContext.downloadEnd`                                                                                | 未接入                                                                            |
 | **响应体读取**             | FF **144**             | `network.getData` / `network.addDataCollector`                                                               | `browser_network` 返回 `bodyAvailable:false` + `reason:"requires Firefox >= 144"` |
 | 验证码：closed shadow root | FF **140**（实测版本） | `script.addPreloadScript`（Firefox 的参数名与 spec 不同）                                                    | 求解器报 `checkbox_not_found`，而不是假装成功                                     |
 | 验证码：滑块拖拽           | FF **140**（实测版本） | `input.performActions` 的 pointer 动作序列                                                                   | 求解器报 `drag_failed`                                                            |
 
-这两项的版本号是**保守口径**：插件的验证码链路只在 Firefox 140 ESR 上端到端验证过，
+这几项的版本号是**保守口径**：插件的验证码链路只在 Firefox 140 ESR 上端到端验证过，
 更早的版本一律报"不可用"，而不是乐观尝试。
+
+下载事件的两个门槛是**分别实测**的：Firefox 140.11.0esr 上
+`browsingContext.downloadWillBegin` 和 `browsingContext.downloadEnd` 都会被直接
+拒绝（"not a valid event name"），协议在 FF 144 落地 `downloadWillBegin`、
+FF 145 落地 `downloadEnd`。此前文档写的"FF 133"是错的，已修正。
 
 ## 验证码链路依赖的两个能力
 

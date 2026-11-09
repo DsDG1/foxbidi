@@ -124,7 +124,7 @@ describe('provider lifecycle (live browser)', { skip }, () => {
   test('a re-adopted instance keeps its profile copy (login state survives)', async () => {
     const provider = makeProvider()
     try {
-      const first = await provider.start()
+      await provider.start()
       const copyDir = provider.copyDir
       await provider.stop({ kill: false })
       const second = await provider.start()

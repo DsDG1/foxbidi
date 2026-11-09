@@ -47,7 +47,6 @@ describe('rootsSource', () => {
   ${rootsSource('PROP')}
   return roots.length;
 })()`
-    // eslint-disable-next-line no-new-func
     const fn = new Function(`return ${wrapped}`)
     assert.equal(typeof fn, 'function')
   })

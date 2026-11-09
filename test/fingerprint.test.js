@@ -47,7 +47,6 @@ function fingerprintOf(opts = {}) {
     activeElement: opts.activeElement === undefined ? null : opts.activeElement,
   }
   const location = { href: opts.url || 'https://example.com/' }
-  // eslint-disable-next-line no-new-func
   const fn = new Function('document', 'location', `return ${FINGERPRINT_EXPRESSION}`)
   return fn(document, location)
 }
@@ -137,7 +136,6 @@ describe('page fingerprint', () => {
   test('a page without a body still produces a fingerprint', () => {
     const document = { body: null, title: '', activeElement: null }
     const location = { href: 'https://example.com/' }
-    // eslint-disable-next-line no-new-func
     const fn = new Function('document', 'location', `return ${FINGERPRINT_EXPRESSION}`)
     const state = fn(document, location)
     assert.equal(typeof state.fingerprint, 'string')

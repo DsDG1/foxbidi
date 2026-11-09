@@ -9,7 +9,6 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { FirefoxProvider, scriptRoots, presetTools } from '../lib/firefox/provider.js'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 
 /**
  * A provider whose browser-facing methods are stubbed.

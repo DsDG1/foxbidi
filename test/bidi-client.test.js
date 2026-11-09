@@ -7,7 +7,7 @@
 // the id→response matching, the event/response separation and the
 // timeout path — without needing Firefox.
 
-import { test, describe, before, after } from 'node:test'
+import { test, describe, after } from 'node:test'
 import assert from 'node:assert/strict'
 import net from 'node:net'
 import { createHash } from 'node:crypto'

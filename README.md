@@ -33,6 +33,36 @@ agent as native MCP tools.
 > at the end of 2024), so WebDriver BiDi is the only way to automate it — and
 > that is exactly what makes the Firefox-only capabilities available.
 
+## What 2.3 changed
+
+**The plugin got faster, smaller and easier to branch on.**
+
+- **Four new tools.** `browser_back` and `browser_forward` walk the tab history
+  (`browsingContext.traverseHistory`, Firefox 122+), `browser_reload` reloads the
+  tab (Firefox 119+), and `browser_set_viewport` overrides the viewport so a
+  responsive layout can be exercised without resizing the window (Firefox 117+).
+  The protocol layer already had the wrappers; nothing called them.
+- **Machine-readable error codes.** Every failure now carries a `code` next to
+  the human-readable `error`, so an agent can branch on `ref_stale` instead of
+  matching an English sentence. The `error` text is unchanged, so existing
+  callers keep working. The full vocabulary is in
+  [`skills/firefox-browser/REFERENCE.md`](skills/firefox-browser/REFERENCE.md).
+- **Actions are ~4× faster.** The plugin used to wait a fixed 250ms on every
+  action for a dialog event that might never arrive. It now counts dialogs with
+  an epoch counter and only waits for an event that is actually in flight:
+  **272.8ms → 66.6ms** mean for a click, measured on Firefox 140.
+- **The injected tool catalogue is 24% smaller.** The tool definitions are
+  re-injected on every turn, so their prose is a permanent cost: **44128 →
+  33380 bytes** for the 38 tools. Tool names, parameters, types and order did
+  not change; only the descriptions were trimmed, and the detail moved into the
+  skill's reference file, which is read on demand.
+- **The source is smaller.** `provider.js` went from 3457 lines to 316 (one
+  module per concern) and `server.js` from 1665 to 526 (the tool catalogue
+  moved to `lib/mcp/tools/`).
+- **The download event gates were wrong.** They claimed Firefox 133 for both
+  `downloadWillBegin` and `downloadEnd`. Firefox ships them in **144** and
+  **145** respectively — on Firefox 140 the event names are rejected outright.
+
 ## What 2.2 changed
 
 **Baidu's rotate-to-upright captcha is now a first-class solver.**
@@ -201,6 +231,9 @@ so a host can consume the result as data rather than parsing prose.
 | `browser_navigate`  | `url`, `contextId?`, `wait?`         | Navigate a tab. `wait` is `none`, `interactive` or `complete` (default).                                            |
 | `browser_tabs`      | —                                    | Open tabs and iframes with their context ids.                                                                       |
 | `browser_close_tab` | `contextId?`                         | Close a tab.                                                                                                        |
+| `browser_back`      | `contextId?`                         | Go back one entry in the tab history. Firefox 122+.                                                                 |
+| `browser_forward`   | `contextId?`                         | Go forward one entry in the tab history. Firefox 122+.                                                              |
+| `browser_reload`    | `contextId?`                         | Reload the tab. Firefox 119+.                                                                                       |
 | `browser_handoff`   | `to`, `url?`, `contextId?`, `carry?` | Move the page between this Firefox and the host's in-app browser.                                                   |
 
 ### Discovery and reading
@@ -219,17 +252,18 @@ so a host can consume the result as data rather than parsing prose.
 All action tools accept **either** `ref` (preferred) **or** `selector`. When
 both are given, the ref wins and the result says so.
 
-| Tool                    | Arguments                                                     | Behaviour                                                                                                   |
-| ----------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `browser_click`         | `ref?` / `selector?`, `button?`, `clickCount?`, `confirm?`    | Click with real pointer events.                                                                             |
-| `browser_type`          | `ref?` / `selector?`, `text`, `clear?`, `submit?`, `confirm?` | Focus and type character by character.                                                                      |
-| `browser_press_key`     | `key`, `contextId?`                                           | Key or shortcut: `Enter`, `Escape`, `Ctrl+Enter`. A shortcut holds its modifier down across the target key. |
-| `browser_select_option` | `ref?` / `selector?`, `value`                                 | Choose a `<select>` option by value.                                                                        |
-| `browser_check`         | `ref?` / `selector?`, `checked`                               | Check or uncheck a checkbox / radio.                                                                        |
-| `browser_hover`         | `ref?` / `selector?`                                          | Move the pointer over an element.                                                                           |
-| `browser_scroll`        | `ref?` / `selector?`, `direction?`, `amount?`                 | Scroll the page, or bring an element into view.                                                             |
-| `browser_upload`        | `ref?` / `selector?`, `paths`, `confirm?`                     | Attach local files to a file input.                                                                         |
-| `browser_wait_for`      | `for?`, `selector?`, `text?`, `timeoutMs?`                    | Wait for a selector, text, load, or network idle.                                                           |
+| Tool                    | Arguments                                                        | Behaviour                                                                                                                                     |
+| ----------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `browser_click`         | `ref?` / `selector?`, `button?`, `clickCount?`, `confirm?`       | Click with real pointer events.                                                                                                               |
+| `browser_type`          | `ref?` / `selector?`, `text`, `clear?`, `submit?`, `confirm?`    | Focus and type character by character.                                                                                                        |
+| `browser_press_key`     | `key`, `contextId?`                                              | Key or shortcut: `Enter`, `Escape`, `Ctrl+Enter`. A shortcut holds its modifier down across the target key.                                   |
+| `browser_select_option` | `ref?` / `selector?`, `value`                                    | Choose a `<select>` option by value.                                                                                                          |
+| `browser_check`         | `ref?` / `selector?`, `checked`                                  | Check or uncheck a checkbox / radio.                                                                                                          |
+| `browser_hover`         | `ref?` / `selector?`                                             | Move the pointer over an element.                                                                                                             |
+| `browser_scroll`        | `ref?` / `selector?`, `direction?`, `amount?`                    | Scroll the page, or bring an element into view.                                                                                               |
+| `browser_upload`        | `ref?` / `selector?`, `paths`, `confirm?`                        | Attach local files to a file input.                                                                                                           |
+| `browser_wait_for`      | `for?`, `selector?`, `text?`, `timeoutMs?`                       | Wait for a selector, text, load, or network idle.                                                                                             |
+| `browser_set_viewport`  | `width`, `height`, `devicePixelRatio?`, `contextId?`, `confirm?` | Override the viewport to test a responsive layout without resizing the window. Firefox 117+. Confirmation required — it re-lays-out the page. |
 
 The browser starts on demand — the first tool call launches it, so there is no
 separate launch step.
@@ -252,6 +286,32 @@ See [`docs/firefox-only.md`](docs/firefox-only.md) for what these can do that a
 CDP-based harness cannot, and
 [`docs/capabilities-matrix.md`](docs/capabilities-matrix.md) for the version
 requirements.
+
+## The context cost of the tool catalogue
+
+Every tool definition is injected into the model's context **on every turn**, so
+the catalogue is a permanent cost — not a one-off. Measured on the wire, in
+exactly the shape the server sends for `tools/list`:
+
+|                                   | Bytes     | Per tool |
+| --------------------------------- | --------- | -------- |
+| v2.2.0 (34 tools)                 | 37925     | 1115     |
+| v2.3.0 before the trim (38 tools) | 44128     | 1161     |
+| v2.3.0 after the trim (38 tools)  | **33380** | **879**  |
+
+The trim cut the tool descriptions to one short clause each, shortened the
+shared schema fragments (one of which is copied into 27 tools, so its wording is
+multiplied by 27), and made the output-schema property descriptions optional.
+Tool names, parameters, types and order did not change — only prose moved, and
+it moved into the skill's reference file, which is read on demand.
+
+**What was deliberately not done.** The largest remaining lever is the number
+of tools: trimming the catalogue to a task-appropriate subset would save
+roughly 55%, far more than trimming descriptions did. It was left out on
+purpose, because a tool the agent cannot see is a tool it will not use, and
+deciding which tools a task needs is a product decision rather than a
+refactor. The `browser_config` preset (`slim` / `basic` / `developer` / `all`)
+already exists as the seam for it.
 
 ## Two browser surfaces, and how to move between them
 
@@ -324,6 +384,23 @@ gate leans strict.
 A refused action is stopped _before_ the input is dispatched, and the result
 carries `blocked: true`, `action`, `requiresConfirm: true` and a human-readable
 `hint`.
+
+## The error contract
+
+A failed tool call returns two fields for the same failure:
+
+- `code` — a fixed, machine-readable word (`ref_stale`, `confirm_required`,
+  `invalid_argument`, `capability_unavailable`, …).
+- `error` — the human-readable sentence, unchanged from previous versions.
+
+Agents should branch on `code`. Matching an English sentence means matching
+its wording, which breaks the moment someone rewords the message. The
+`error` text is still there for people and for existing callers, and the
+`hint` field says what to do next.
+
+The full vocabulary is in
+[`skills/firefox-browser/REFERENCE.md`](skills/firefox-browser/REFERENCE.md),
+and a test checks it against the source table so the two cannot drift apart.
 
 ## Configuration
 
@@ -418,12 +495,21 @@ silently driving the wrong browser.
 ## Development
 
 ```bash
-npm test        # unit + integration tests (Node's built-in runner)
+npm test                # unit + integration tests (Node's built-in runner)
+npm run test:unit       # unit tests only — no browser needed
+npm run test:integration# integration tests only — launches a real Firefox
+npm run lint            # ESLint (flat config)
+npm run format          # Prettier, in place
+npm run format:check    # Prettier, check only
+npm run validate        # validate the plugin package
 ```
 
 The integration tests launch a real Firefox and skip themselves when none is
 installed. Each live-browser test file uses its own base port, because the test
 runner runs files in parallel.
+
+The plugin has **no runtime npm dependencies** — ESLint and Prettier are
+devDependencies only, and the MCP server runs on a bare Node install.
 
 Layout:
 
@@ -433,10 +519,18 @@ Layout:
   timeouts.
 - `lib/bidi/protocol.js` — BiDi command wrappers and `RemoteValue` unwrapping.
 - `lib/mcp/schema.js` — output schemas and result shaping.
+- `lib/mcp/tools/` — the tool catalogue, one module per concern, with an
+  explicit `TOOL_ORDER` so the order the host receives cannot drift.
 - `lib/firefox/profile.js` — profile detection, lock detection, copying,
   fingerprinting.
 - `lib/firefox/launcher.js` — binary detection, port allocation, process start.
-- `lib/firefox/provider.js` — lifecycle and the high-level browser API.
+- `lib/firefox/provider.js` — the provider class and the state every method
+  shares.
+- `lib/firefox/provider/` — the provider methods, one module per concern
+  (session, process, tabs, action, target, inspect, diagnostic, firefox,
+  captcha, workflow, events, support).
+- `lib/firefox/errors.js` — the error contract: the code table, `fail()` and
+  the classification helpers.
 - `lib/firefox/snapshot.js` — the injected ARIA snapshot script and ref helpers.
 - `lib/firefox/registry.js` — the page-side ref registry (no DOM attributes).
 - `lib/firefox/dialogs.js` — JavaScript-dialog handling.
