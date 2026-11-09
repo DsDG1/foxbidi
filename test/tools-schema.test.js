@@ -59,6 +59,12 @@ const EXPECTED_ORDER = [
   'browser_batch',
   'browser_run_script',
   'browser_config',
+  // New tools are APPENDED so the existing prefix stays byte-identical and
+  // the host's prompt cache keeps hitting.
+  'browser_back',
+  'browser_forward',
+  'browser_reload',
+  'browser_set_viewport',
 ]
 
 describe('tool catalogue', () => {
