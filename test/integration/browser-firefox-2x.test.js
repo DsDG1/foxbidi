@@ -129,9 +129,7 @@ describe('2.0 capabilities (live browser)', { skip }, () => {
     const snap = await provider.snapshot(contextId, { frames: 'all' })
     assert.equal(snap.ok, true, snap.error)
     assert.ok(snap.frames && snap.frames.length > 0, 'the frames must be reported')
-    const frame = snap.frames.find((f) =>
-      (f.elements || []).some((e) => e.name === 'Inside frame'),
-    )
+    const frame = snap.frames.find((f) => (f.elements || []).some((e) => e.name === 'Inside frame'))
     assert.ok(frame, 'the iframe button must be in a frame snapshot')
     const ref = frame.elements.find((e) => e.name === 'Inside frame').ref
     assert.match(ref, /^f[0-9a-z]+:e\d+$/, 'a frame ref must carry its frame label')
@@ -140,9 +138,7 @@ describe('2.0 capabilities (live browser)', { skip }, () => {
   test('a ref inside an iframe can be acted on', async () => {
     await load(PAGE)
     const snap = await provider.snapshot(contextId, { frames: 'all' })
-    const frame = snap.frames.find((f) =>
-      (f.elements || []).some((e) => e.name === 'Inside frame'),
-    )
+    const frame = snap.frames.find((f) => (f.elements || []).some((e) => e.name === 'Inside frame'))
     assert.ok(frame)
     const ref = frame.elements.find((e) => e.name === 'Inside frame').ref
 
@@ -175,7 +171,7 @@ describe('2.0 capabilities (live browser)', { skip }, () => {
     // and reported. The next action must not block.
     assert.ok(elapsed < 10000, `the click took ${elapsed}ms — the dialog blocked it`)
 
-    const after = await provider.evaluate("1 + 1", contextId)
+    const after = await provider.evaluate('1 + 1', contextId)
     assert.equal(after.value, 2, 'the page must still be usable after the dialog')
   })
 
@@ -186,7 +182,7 @@ describe('2.0 capabilities (live browser)', { skip }, () => {
     await provider.click(undefined, contextId, { ref: button.ref })
 
     // A second action drains the dialog record.
-    const result = await provider.evaluate("document.title", contextId)
+    const result = await provider.evaluate('document.title', contextId)
     assert.equal(result.ok, true)
     // The dialog may already have been drained by the click itself; either
     // way the plugin must never report a stuck page.
@@ -197,7 +193,11 @@ describe('2.0 capabilities (live browser)', { skip }, () => {
     await load(PAGE)
     const report = await provider.detectability(contextId)
     assert.equal(report.ok, true, report.error)
-    assert.equal(report.webdriver, true, 'Firefox sets navigator.webdriver when the remote agent runs')
+    assert.equal(
+      report.webdriver,
+      true,
+      'Firefox sets navigator.webdriver when the remote agent runs',
+    )
     assert.equal(report.automationDetectable, true)
     assert.equal(report.domRefAttributes, 0)
     assert.ok(Array.isArray(report.notes))
@@ -282,10 +282,7 @@ describe('2.0 capabilities (live browser)', { skip }, () => {
     const dir = join(homedir(), '.mavis', 'ff-workspace')
     mkdirSync(dir, { recursive: true })
     const file = join(dir, 'integration-probe.js')
-    writeFileSync(
-      file,
-      'return (args) => ({ sum: args.a + args.b, title: document.title })',
-    )
+    writeFileSync(file, 'return (args) => ({ sum: args.a + args.b, title: document.title })')
     await load(PAGE)
     const result = await provider.runScript(file, { args: { a: 2, b: 3 } })
     assert.equal(result.ok, true, result.error)

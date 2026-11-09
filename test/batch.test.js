@@ -90,10 +90,9 @@ describe('browser_batch', () => {
       click: () => ({ ok: false, error: 'nope' }),
       type: () => ({ ok: true }),
     })
-    const result = await provider.batch(
-      [{ action: 'click' }, { action: 'type' }],
-      { stopOnError: false },
-    )
+    const result = await provider.batch([{ action: 'click' }, { action: 'type' }], {
+      stopOnError: false,
+    })
     assert.equal(result.failedAt, undefined)
     assert.equal(result.completed, 1)
     assert.equal(result.steps.length, 2)

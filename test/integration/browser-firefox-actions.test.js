@@ -214,7 +214,7 @@ describe('agent loop (live browser)', { skip }, () => {
     await loadPage()
     await provider.type('#user', 'Hello', contextId)
     await provider.evaluate(
-      "window.__last = null; " +
+      'window.__last = null; ' +
         "document.addEventListener('keydown', (e) => { window.__last = { key: e.key, ctrlKey: e.ctrlKey }; });",
       contextId,
     )
@@ -277,7 +277,11 @@ describe('agent loop (live browser)', { skip }, () => {
 
   test('waiting for text that is present succeeds', async () => {
     await loadPage()
-    const result = await provider.waitFor(contextId, { for: 'text', text: 'Sign in', timeoutMs: 3000 })
+    const result = await provider.waitFor(contextId, {
+      for: 'text',
+      text: 'Sign in',
+      timeoutMs: 3000,
+    })
     assert.equal(result.ok, true, result.error)
     assert.equal(result.for, 'text')
   })
@@ -296,7 +300,11 @@ describe('agent loop (live browser)', { skip }, () => {
 
   test('waiting for an element that exists succeeds', async () => {
     await loadPage()
-    const result = await provider.waitFor(contextId, { for: 'selector', selector: '#go', timeoutMs: 3000 })
+    const result = await provider.waitFor(contextId, {
+      for: 'selector',
+      selector: '#go',
+      timeoutMs: 3000,
+    })
     assert.equal(result.ok, true, result.error)
   })
 
@@ -395,8 +403,7 @@ describe('agent loop (live browser)', { skip }, () => {
 
   test('page text is bounded by default and marks the truncation', async () => {
     await provider.navigate(
-      'data:text/html;charset=utf-8,' +
-        encodeURIComponent(`<body>${'x'.repeat(20000)}</body>`),
+      'data:text/html;charset=utf-8,' + encodeURIComponent(`<body>${'x'.repeat(20000)}</body>`),
     )
     const tabs = await provider.listTabs()
     const ctx = tabs[0]?.contextId

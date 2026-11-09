@@ -85,7 +85,11 @@ describe('Firefox-only capabilities (live browser)', { skip }, () => {
 
   test('the privileged capability is reported as available', async () => {
     const caps = await provider.probeCapabilities()
-    assert.equal(caps.features.privilegedContext, true, caps.featureDetails.privilegedContext.reason)
+    assert.equal(
+      caps.features.privilegedContext,
+      true,
+      caps.featureDetails.privilegedContext.reason,
+    )
   })
 
   test('the extension list can be read', async () => {

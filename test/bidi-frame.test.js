@@ -13,14 +13,8 @@ import { dirname, resolve } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const absPath = (rel) => pathToFileURL(resolve(HERE, '..', rel)).href
 
-const {
-  encodeTextFrame,
-  encodeCloseFrame,
-  encodePongFrame,
-  FrameDecoder,
-  decodeAll,
-  OPCODE,
-} = await import(absPath('lib/bidi/frame.js'))
+const { encodeTextFrame, encodeCloseFrame, encodePongFrame, FrameDecoder, decodeAll, OPCODE } =
+  await import(absPath('lib/bidi/frame.js'))
 
 // ---------------------------------------------------------------------------
 // Encoding

@@ -17,12 +17,8 @@ import { dirname, resolve } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const absPath = (rel) => pathToFileURL(resolve(HERE, '..', rel)).href
 
-const { BidiClient, BidiError, BidiTimeoutError } = await import(
-  absPath('lib/bidi/client.js')
-)
-const { encodeTextFrame, FrameDecoder } = await import(
-  absPath('lib/bidi/frame.js')
-)
+const { BidiClient, BidiError, BidiTimeoutError } = await import(absPath('lib/bidi/client.js'))
+const { encodeTextFrame, FrameDecoder } = await import(absPath('lib/bidi/frame.js'))
 
 // ---------------------------------------------------------------------------
 // Fake BiDi server
@@ -117,9 +113,7 @@ class FakeBiDiServer {
   }
 
   emitEvent(socket, method, params) {
-    socket.write(
-      encodeTextFrame(JSON.stringify({ type: 'event', method, params })),
-    )
+    socket.write(encodeTextFrame(JSON.stringify({ type: 'event', method, params })))
   }
 }
 
@@ -188,9 +182,15 @@ describe('bidi client', () => {
     // The server answers out of order — the client must not mix them up.
     const server = await startServer((msg) => {
       if (msg.method === 'slow') {
-        setTimeout(() => server.reply(server.sockets[0], {
-          type: 'success', id: msg.id, result: { which: 'slow' },
-        }), 60)
+        setTimeout(
+          () =>
+            server.reply(server.sockets[0], {
+              type: 'success',
+              id: msg.id,
+              result: { which: 'slow' },
+            }),
+          60,
+        )
         return null
       }
       if (msg.method === 'fast') {
@@ -200,10 +200,7 @@ describe('bidi client', () => {
     })
 
     const c = await connectClient(server.port)
-    const [slow, fast] = await Promise.all([
-      c.send('slow'),
-      c.send('fast'),
-    ])
+    const [slow, fast] = await Promise.all([c.send('slow'), c.send('fast')])
     assert.equal(slow.which, 'slow')
     assert.equal(fast.which, 'fast')
   })
@@ -233,9 +230,15 @@ describe('bidi client', () => {
       if (msg.method === 'trigger') {
         // An event arrives BEFORE the response for the same command.
         server.emitEvent(socket, 'log.entryAdded', { level: 'warn', text: 'boom' })
-        setTimeout(() => server.reply(socket, {
-          type: 'success', id: msg.id, result: { done: true },
-        }), 20)
+        setTimeout(
+          () =>
+            server.reply(socket, {
+              type: 'success',
+              id: msg.id,
+              result: { done: true },
+            }),
+          20,
+        )
         return null
       }
       return null
@@ -281,11 +284,14 @@ describe('bidi client', () => {
     const c = await connectClient(server.port)
     const pending = c.send('pending.command')
     server.sockets[0].destroy()
-    await assert.rejects(() => pending, (err) => {
-      assert.ok(err instanceof BidiError)
-      assert.equal(err.code, 'connection_closed')
-      return true
-    })
+    await assert.rejects(
+      () => pending,
+      (err) => {
+        assert.ok(err instanceof BidiError)
+        assert.equal(err.code, 'connection_closed')
+        return true
+      },
+    )
   })
 
   test('serializes commands so a later one cannot overtake an earlier one', async () => {
@@ -296,7 +302,9 @@ describe('bidi client', () => {
       setTimeout(() => {
         order.push(`end:${msg.method}`)
         server.reply(server.sockets[0], {
-          type: 'success', id: msg.id, result: {},
+          type: 'success',
+          id: msg.id,
+          result: {},
         })
       }, delay)
       return null

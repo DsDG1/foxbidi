@@ -99,7 +99,11 @@ describe('frame labels', () => {
 
 describe('ensureRegistry', () => {
   test('it reports success when the page accepted the script', async () => {
-    const client = { async send() { return {} } }
+    const client = {
+      async send() {
+        return {}
+      },
+    }
     assert.equal(await ensureRegistry(client, 'ctx-1', 'k'), true)
   })
 

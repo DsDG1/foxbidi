@@ -19,7 +19,8 @@ import { join } from 'node:path'
 import { ImageServer } from '../lib/firefox/images.js'
 
 // 一张 1x1 的真实 PNG
-const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+const PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 function tmp() {
   return mkdtempSync(join(tmpdir(), 'ffimg-'))
@@ -54,7 +55,9 @@ describe('image server', () => {
     const dir = tmp()
     const server = new ImageServer({ dir })
     const [a, b, c] = await Promise.all([
-      server.ensureStarted(), server.ensureStarted(), server.ensureStarted(),
+      server.ensureStarted(),
+      server.ensureStarted(),
+      server.ensureStarted(),
     ])
     assert.equal(a.port, b.port)
     assert.equal(b.port, c.port)

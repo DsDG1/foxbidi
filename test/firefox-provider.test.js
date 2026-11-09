@@ -73,22 +73,13 @@ describe('profile copy base resolution', () => {
 
   test('resolves under the user home by default', () => {
     const base = defaultCopyBase()
-    assert.ok(
-      base.startsWith(homedir()),
-      `expected the copy base under ${homedir()}, got ${base}`,
-    )
+    assert.ok(base.startsWith(homedir()), `expected the copy base under ${homedir()}, got ${base}`)
   })
 })
 
 describe('provider lifecycle states', () => {
   test('exposes the documented state vocabulary', () => {
-    assert.deepEqual(Object.keys(STATE).sort(), [
-      'DEGRADED',
-      'FAILED',
-      'IDLE',
-      'READY',
-      'STARTING',
-    ])
+    assert.deepEqual(Object.keys(STATE).sort(), ['DEGRADED', 'FAILED', 'IDLE', 'READY', 'STARTING'])
     assert.equal(STATE.IDLE, 'idle')
     assert.equal(STATE.READY, 'ready')
     assert.equal(STATE.DEGRADED, 'degraded')

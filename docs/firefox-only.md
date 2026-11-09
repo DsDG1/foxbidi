@@ -42,6 +42,7 @@ Firefox 的容器给每个身份一套独立的 cookie / localStorage / cache。
 而装个扩展就能解决。Chromium 那边的扩展路径在 BiDi 之外，且不支持临时安装。
 
 **限制**：
+
 - FF 137+。
 - 装扩展是不可逆动作，**必须** `confirm: true`。
 - 列扩展需要特权上下文（读 `about:addons`），要 `FIREFOX_BROWSER_PRIVILEGED=1` 启动。
@@ -96,6 +97,7 @@ FIREFOX_BROWSER_PRIVILEGED=1   # 启动时打开
 匹配：看到请求就逐个决定——命中模式就 `failRequest`，没命中就 `continueRequest`。
 
 这样做的两个好处：
+
 - 不依赖 Firefox 的 `urlPatterns` 参数支持度（各家实现差别很大）。
 - 页面**不会被永久冻住**：每个请求都有兜底放行，Agent 中途放弃也会在超时后恢复。
 
@@ -110,18 +112,22 @@ FIREFOX_BROWSER_PRIVILEGED=1   # 启动时打开
 **FF 144+ 才有**（BiDi M17）。FF 140 上这条会返回：
 
 ```json
-{ "ok": true, "bodyAvailable": false, "reason": "requires Firefox >= 144",
-  "hint": "Use browser_evaluate with fetch() as a fallback." }
+{
+  "ok": true,
+  "bodyAvailable": false,
+  "reason": "requires Firefox >= 144",
+  "hint": "Use browser_evaluate with fetch() as a fallback."
+}
 ```
 
 ## 7. 反检测的真实边界
 
-| | 状态 |
-|---|---|
-| 快照不往 DOM 写属性 | ✅ 2.0 起，ref 存在页面里一个不可枚举属性上 |
-| 注册表键随机、每次会话不同 | ✅ |
-| 注册表键不可枚举 | ✅（`Object.keys(window)` 看不到） |
-| `navigator.webdriver` | ❌ **无法关闭**。Firefox 只要 Remote Agent 在跑就是 `true`，没有任何 pref 或启动参数能改 |
+|                            | 状态                                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------------------- |
+| 快照不往 DOM 写属性        | ✅ 2.0 起，ref 存在页面里一个不可枚举属性上                                              |
+| 注册表键随机、每次会话不同 | ✅                                                                                       |
+| 注册表键不可枚举           | ✅（`Object.keys(window)` 看不到）                                                       |
+| `navigator.webdriver`      | ❌ **无法关闭**。Firefox 只要 Remote Agent 在跑就是 `true`，没有任何 pref 或启动参数能改 |
 
 所以插件**不承诺隐身**。`browser_detectability` 会实测并如实报告，包括"`window` 上还能
 不能被 `Object.getOwnPropertyNames` 找到注册表键"这种不利事实。
@@ -137,10 +143,10 @@ FIREFOX_BROWSER_PREFS='{"privacy.resistFingerprinting":true}'
 
 ## 8. 其他 BiDi 独有能力
 
-| 能力 | 说明 | 状态 |
-|---|---|---|
-| `browsingContext.traverseHistory` | 历史前进后退 | FF122+，未接入工具 |
-| `browsingContext.reload` | 重载 | FF119+，未接入工具 |
-| `browsingContext.downloadWillBegin/End` | 下载事件 | 版本门槛待实测 |
-| `script.callFunction{userActivation}` | 脚本里的用户激活 | FF121+，未接入 |
-| `storage.getCookies{partition}` | 分区 cookie | FF124+ |
+| 能力                                    | 说明             | 状态               |
+| --------------------------------------- | ---------------- | ------------------ |
+| `browsingContext.traverseHistory`       | 历史前进后退     | FF122+，未接入工具 |
+| `browsingContext.reload`                | 重载             | FF119+，未接入工具 |
+| `browsingContext.downloadWillBegin/End` | 下载事件         | 版本门槛待实测     |
+| `script.callFunction{userActivation}`   | 脚本里的用户激活 | FF121+，未接入     |
+| `storage.getCookies{partition}`         | 分区 cookie      | FF124+             |

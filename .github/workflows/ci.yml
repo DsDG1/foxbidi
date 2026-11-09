@@ -1,0 +1,58 @@
+# firefox-browser CI
+#
+# Runs on every push and PR. Matrix: Node 22 / 24 (matches package.json
+# engines >= 20; 22 and 24 are what the plugin is actually used on).
+#
+# Notes:
+# - The plugin has ZERO runtime npm dependencies. The only dependencies are
+#   devDependencies (eslint, prettier) used by the lint step.
+# - The integration suite launches a REAL Firefox and skips itself when none
+#   is installed, so CI stays green on a runner without Firefox. The job
+#   installs Firefox ESR so the integration tests actually execute.
+# - This repository currently has no remote; the workflow activates
+#   automatically once one is added and pushed.
+
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install Firefox ESR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y firefox-esr
+
+      - name: Syntax check
+        run: |
+          node --check server.js
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Package validation
+        run: npm run validate
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests
+        run: npm run test:integration

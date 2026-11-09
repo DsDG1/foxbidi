@@ -19,7 +19,8 @@ import {
 
 describe('challenge classification', () => {
   test('recognises a Turnstile challenge frame by URL', () => {
-    const url = 'https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/f/av0/rch/xgl8i'
+    const url =
+      'https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/f/av0/rch/xgl8i'
     const challenge = challengeForUrl(url)
     assert.equal(challenge.id, 'turnstile')
   })
@@ -73,7 +74,11 @@ describe('flattenTree', () => {
         contextId: 'top',
         url: 'https://example.com',
         children: [
-          { contextId: 'f1', url: 'https://a.example', children: [{ contextId: 'f2', url: 'https://b.example' }] },
+          {
+            contextId: 'f1',
+            url: 'https://a.example',
+            children: [{ contextId: 'f2', url: 'https://b.example' }],
+          },
         ],
       },
     ]

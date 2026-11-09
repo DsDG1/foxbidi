@@ -20,10 +20,7 @@ describe('network url redaction', () => {
   })
 
   test('a query string and a fragment both go', () => {
-    assert.equal(
-      sanitizeUrl('https://example.com/a?x=1&y=2#frag'),
-      'https://example.com/a',
-    )
+    assert.equal(sanitizeUrl('https://example.com/a?x=1&y=2#frag'), 'https://example.com/a')
   })
 
   test('the path survives — it is the useful part', () => {
@@ -50,10 +47,7 @@ describe('network url redaction', () => {
   })
 
   test('a blob url keeps its inner url', () => {
-    assert.equal(
-      sanitizeUrl('blob:https://example.com/9a1f'),
-      'blob:https://example.com/9a1f',
-    )
+    assert.equal(sanitizeUrl('blob:https://example.com/9a1f'), 'blob:https://example.com/9a1f')
   })
 
   test('an about url survives', () => {

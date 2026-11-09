@@ -111,9 +111,7 @@ class McpClient {
     const id = this.nextId++
     return new Promise((resolvePromise) => {
       this.pending.set(id, resolvePromise)
-      this.child.stdin.write(
-        `${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`,
-      )
+      this.child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`)
     })
   }
 
@@ -152,10 +150,7 @@ describe('mcp structured output contract', () => {
       for (const tool of list.result.tools) {
         for (const [key, spec] of Object.entries(tool.outputSchema.properties || {})) {
           if (spec.type !== 'array') continue
-          assert.ok(
-            spec.items,
-            `tool "${tool.name}" declares array "${key}" with no item schema`,
-          )
+          assert.ok(spec.items, `tool "${tool.name}" declares array "${key}" with no item schema`)
           assert.equal(
             spec.items.type,
             'object',
@@ -185,10 +180,7 @@ describe('mcp structured output contract', () => {
         })
         const result = call.result
         assert.ok(result, `tool "${tool.name}" returned no result`)
-        assert.ok(
-          result.structuredContent,
-          `tool "${tool.name}" returned no structuredContent`,
-        )
+        assert.ok(result.structuredContent, `tool "${tool.name}" returned no structuredContent`)
         const problem = validateAgainstSchema(result.structuredContent, tool.outputSchema)
         assert.equal(problem, null, `tool "${tool.name}": ${problem}`)
       }

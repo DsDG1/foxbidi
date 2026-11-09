@@ -9,10 +9,10 @@ description: 用真实 Firefox 浏览网页并执行交互动作（打开链接�
 
 ## 选哪个浏览器
 
-| 表面 | 是什么 | 什么时候用 |
-|---|---|---|
-| **本 Skill 的 Firefox**（默认） | 插件复制的用户 profile，完整登录态，真实 Firefox 内核 | **默认都用它。** 任何网页浏览/交互任务 |
-| **宿主内置浏览器** | `mcp_browser` 控制的宿主浏览器面板 | 用户明确说"当前浏览器 / 右侧那个 / 内置浏览器 / browser use" |
+| 表面                            | 是什么                                                | 什么时候用                                                   |
+| ------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------ |
+| **本 Skill 的 Firefox**（默认） | 插件复制的用户 profile，完整登录态，真实 Firefox 内核 | **默认都用它。** 任何网页浏览/交互任务                       |
+| **宿主内置浏览器**              | `mcp_browser` 控制的宿主浏览器面板                    | 用户明确说"当前浏览器 / 右侧那个 / 内置浏览器 / browser use" |
 
 判据：**默认 Firefox。** 它带用户真实登录态，且只有它能跑 Firefox。
 内置浏览器走 Chromium 路线（同样带登录态），但**驱动不了 Firefox**——Firefox 没有 CDP。
@@ -48,13 +48,13 @@ description: 用真实 Firefox 浏览网页并执行交互动作（打开链接�
 
 `browser_snapshot` 返回 `elements[]`，每项含 `ref` / `role` / `name` / `rect` / `inViewport`。
 
-| 参数 | 用途 |
-|---|---|
-| `roleFilter: ["button","link"]` | 只保留这些角色，页面吵时用 |
-| `nameContains: "登录"` | 只保留名字含此文本的 |
-| `offset` + `maxElements` | 分页。`nextOffset` 是下一页起点，**第 300 个之后照样能拿到** |
-| `includeText: true` | 顺便返回可见文本块，省一次 browser_text |
-| `frames: "all"` | 连 iframe 内容一起快照，iframe 里的 ref 带帧前缀 `fxxxxxxx:e0` |
+| 参数                            | 用途                                                           |
+| ------------------------------- | -------------------------------------------------------------- |
+| `roleFilter: ["button","link"]` | 只保留这些角色，页面吵时用                                     |
+| `nameContains: "登录"`          | 只保留名字含此文本的                                           |
+| `offset` + `maxElements`        | 分页。`nextOffset` 是下一页起点，**第 300 个之后照样能拿到**   |
+| `includeText: true`             | 顺便返回可见文本块，省一次 browser_text                        |
+| `frames: "all"`                 | 连 iframe 内容一起快照，iframe 里的 ref 带帧前缀 `fxxxxxxx:e0` |
 
 快照**能穿透 open shadow root**（web component 里的控件能点到）；closed shadow root 平台层面进不去。
 
@@ -99,14 +99,14 @@ return (args) => {
 
 这些是 CDP 方案**做不到**的（Firefox 没有 CDP）：
 
-| 工具 | 用途 | 需要 |
-|---|---|---|
-| `browser_context` | 容器：独立 cookie / localStorage / cache。多账号同站并存 | FF124+ |
-| `browser_extension` | 安装/卸载扩展（uBlock、2FA、密码管理器） | FF137+ |
-| `browser_cookie` | 读写 cookie，**能读 HttpOnly** | FF124+ |
-| `browser_intercept` | 屏蔽请求（追踪器、广告、吵闹的 API） | FF124+ |
-| `browser_detectability` | 实测本会话有多容易被检测 | — |
-| `browser_network` + `requestId` | 读响应体 | **FF144+** |
+| 工具                            | 用途                                                     | 需要       |
+| ------------------------------- | -------------------------------------------------------- | ---------- |
+| `browser_context`               | 容器：独立 cookie / localStorage / cache。多账号同站并存 | FF124+     |
+| `browser_extension`             | 安装/卸载扩展（uBlock、2FA、密码管理器）                 | FF137+     |
+| `browser_cookie`                | 读写 cookie，**能读 HttpOnly**                           | FF124+     |
+| `browser_intercept`             | 屏蔽请求（追踪器、广告、吵闹的 API）                     | FF124+     |
+| `browser_detectability`         | 实测本会话有多容易被检测                                 | —          |
+| `browser_network` + `requestId` | 读响应体                                                 | **FF144+** |
 
 **用之前先看 `browser_status`**：它一次报清"什么 Firefox、哪些能力可用、ref 存哪、有没有挂起的弹窗"。它是只读的——不会为了回答问题而启动浏览器。浏览器没跑时，能力矩阵是按版本号推出来的**预期**（`capabilities.probed` 为 `false`）；跑起来之后就是实探结果。
 
@@ -150,8 +150,12 @@ return (args) => {
 ref 绑定在 DOM 上。**页面一旦重新渲染**（React 刷新、翻页、AJAX 替换节点），旧 ref 全部作废：
 
 ```json
-{ "ok": false, "error": "ref e12 no longer exists in the page",
-  "requiresResnapshot": true, "hint": "take a fresh browser_snapshot" }
+{
+  "ok": false,
+  "error": "ref e12 no longer exists in the page",
+  "requiresResnapshot": true,
+  "hint": "take a fresh browser_snapshot"
+}
 ```
 
 看到 `requiresResnapshot: true` 就**重新调 `browser_snapshot`**，不要换选择器硬试，也不要重试同一个 ref。

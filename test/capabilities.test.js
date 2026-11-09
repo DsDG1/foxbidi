@@ -180,7 +180,10 @@ describe('version-based expectations', () => {
 
   test('the expectation respects the privileged launch flag', () => {
     assert.equal(expectedFeatures('140.11.0esr').features.privilegedContext, false)
-    assert.equal(expectedFeatures('140.11.0esr', { privileged: true }).features.privilegedContext, true)
+    assert.equal(
+      expectedFeatures('140.11.0esr', { privileged: true }).features.privilegedContext,
+      true,
+    )
   })
 
   test('the expectation names the risks it implies', () => {

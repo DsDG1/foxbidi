@@ -6,29 +6,29 @@
 
 `browser_status` 是**只读**工具：它不会为了回答问题而启动浏览器。于是有两种状态：
 
-| 状态 | `capabilities.probed` | 含义 |
-|---|---|---|
-| 浏览器在跑 | `true` | 矩阵是**实探**结果，`featureDetails[*].source` 说明每项怎么判的 |
-| 浏览器没跑 | `false` | 矩阵是**版本预期**：按 `firefox --version` 的版本号推出来的，`knownRisks` 里会写明"浏览器没运行，这是版本预期不是实探" |
+| 状态       | `capabilities.probed` | 含义                                                                                                                   |
+| ---------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 浏览器在跑 | `true`                | 矩阵是**实探**结果，`featureDetails[*].source` 说明每项怎么判的                                                        |
+| 浏览器没跑 | `false`               | 矩阵是**版本预期**：按 `firefox --version` 的版本号推出来的，`knownRisks` 里会写明"浏览器没运行，这是版本预期不是实探" |
 
 两种情况下 `capabilities.features` 的形状完全一样，Agent 不必分支处理。
 
 ## 版本门槛
 
-| 能力 | 需要 | 对应 BiDi | 缺了会怎样 |
-|---|---|---|---|
-| JS 弹窗处理 | FF **118** / 119 | `browsingContext.userPromptOpened` / `userPromptClosed` / `handleUserPrompt` | 弹窗会**阻塞页面**，后续命令全部超时。插件会在 `browser_status` 里标 `knownRisk` |
-| 历史前进后退 | FF **122** | `browsingContext.traverseHistory` | 未接入 |
-| 用户激活 | FF **121** | `script.callFunction{userActivation}` | 未接入 |
-| 容器（多身份） | FF **124** | `browser.createUserContext` / `getUserContexts` / `removeUserContext`，`browsingContext.create{userContext}` | `browser_context` 返回 `capability_unavailable` |
-| Cookie 读写 | FF **124** | `storage.getCookies` / `setCookie` | `browser_cookie` 返回 `capability_unavailable` |
-| 请求拦截 | FF **124** | `network.addIntercept` / `continueRequest` / `failRequest` | `browser_intercept` 返回 `capability_unavailable` |
-| 扩展管理 | FF **137** | `webExtension.install` / `uninstall` | `browser_extension` 返回 `capability_unavailable` |
-| 特权（chrome://）上下文 | FF **138** | `--remote-enable-system-access` + `browsingContext.getTree{root:true}` | 读不了 `about:preferences` / `about:addons` |
-| 下载事件 | FF **133**（待实测） | `browsingContext.downloadWillBegin` / `downloadEnd` | 未接入 |
-| **响应体读取** | FF **144** | `network.getData` / `network.addDataCollector` | `browser_network` 返回 `bodyAvailable:false` + `reason:"requires Firefox >= 144"` |
-| 验证码：closed shadow root | FF **140**（实测版本） | `script.addPreloadScript`（Firefox 的参数名与 spec 不同） | 求解器报 `checkbox_not_found`，而不是假装成功 |
-| 验证码：滑块拖拽 | FF **140**（实测版本） | `input.performActions` 的 pointer 动作序列 | 求解器报 `drag_failed` |
+| 能力                       | 需要                   | 对应 BiDi                                                                                                    | 缺了会怎样                                                                        |
+| -------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| JS 弹窗处理                | FF **118** / 119       | `browsingContext.userPromptOpened` / `userPromptClosed` / `handleUserPrompt`                                 | 弹窗会**阻塞页面**，后续命令全部超时。插件会在 `browser_status` 里标 `knownRisk`  |
+| 历史前进后退               | FF **122**             | `browsingContext.traverseHistory`                                                                            | 未接入                                                                            |
+| 用户激活                   | FF **121**             | `script.callFunction{userActivation}`                                                                        | 未接入                                                                            |
+| 容器（多身份）             | FF **124**             | `browser.createUserContext` / `getUserContexts` / `removeUserContext`，`browsingContext.create{userContext}` | `browser_context` 返回 `capability_unavailable`                                   |
+| Cookie 读写                | FF **124**             | `storage.getCookies` / `setCookie`                                                                           | `browser_cookie` 返回 `capability_unavailable`                                    |
+| 请求拦截                   | FF **124**             | `network.addIntercept` / `continueRequest` / `failRequest`                                                   | `browser_intercept` 返回 `capability_unavailable`                                 |
+| 扩展管理                   | FF **137**             | `webExtension.install` / `uninstall`                                                                         | `browser_extension` 返回 `capability_unavailable`                                 |
+| 特权（chrome://）上下文    | FF **138**             | `--remote-enable-system-access` + `browsingContext.getTree{root:true}`                                       | 读不了 `about:preferences` / `about:addons`                                       |
+| 下载事件                   | FF **133**（待实测）   | `browsingContext.downloadWillBegin` / `downloadEnd`                                                          | 未接入                                                                            |
+| **响应体读取**             | FF **144**             | `network.getData` / `network.addDataCollector`                                                               | `browser_network` 返回 `bodyAvailable:false` + `reason:"requires Firefox >= 144"` |
+| 验证码：closed shadow root | FF **140**（实测版本） | `script.addPreloadScript`（Firefox 的参数名与 spec 不同）                                                    | 求解器报 `checkbox_not_found`，而不是假装成功                                     |
+| 验证码：滑块拖拽           | FF **140**（实测版本） | `input.performActions` 的 pointer 动作序列                                                                   | 求解器报 `drag_failed`                                                            |
 
 这两项的版本号是**保守口径**：插件的验证码链路只在 Firefox 140 ESR 上端到端验证过，
 更早的版本一律报"不可用"，而不是乐观尝试。
@@ -37,10 +37,10 @@
 
 验证码求解靠的是两个 Firefox 侧形状并不稳定的命令：
 
-| 能力 | 为什么需要它 | 缺了会怎样 |
-|---|---|---|
+| 能力                   | 为什么需要它                                                                                                                                                | 缺了会怎样                             |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
 | `captchaPreloadScript` | Turnstile / reCAPTCHA 的 checkbox 在 **closed shadow root** 里，没有任何选择器能选到。插件在页面脚本执行前 patch `attachShadow`，把 root 挂到一个自有属性上 | 找不到 checkbox → `checkbox_not_found` |
-| `captchaDrag` | 滑块只认真实手势：`pointerMove → pointerDown → N×pointerMove → pointerUp`。一次跳过去的 `element.click()` 会被识别成机器 | 拖不动 → `drag_failed` |
+| `captchaDrag`          | 滑块只认真实手势：`pointerMove → pointerDown → N×pointerMove → pointerUp`。一次跳过去的 `element.click()` 会被识别成机器                                    | 拖不动 → `drag_failed`                 |
 
 `script.addPreloadScript` 的 Firefox 形状与 spec 不同（用 `functionDeclaration` 字符串，
 目标用 `context` 字符串），细节见 `lib/bidi/protocol.js` 的注释。
@@ -56,13 +56,13 @@ Firefox **140.11.0esr**。所以：
 
 ## 探测方式
 
-| 能力 | 判定依据 |
-|---|---|
-| `userPrompt` | **订阅结果**。Firefox 接受了 `browsingContext.userPromptOpened` 订阅 → 支持。这是更强的证据，优先于版本号 |
-| `userContexts` / `storageCookies` | **实探**。真的发一次 `browser.getUserContexts` / `storage.getCookies`，看是否成功 |
-| `networkIntercept` | **实探**。发 `network.addIntercept`，立刻 `network.removeIntercept` 收掉 |
-| `webExtension` / `networkBodies` / `downloadEvents` | **版本号**。探测它们需要真的装扩展或读响应体，不适合当探针 |
-| `privilegedContext` | **版本号 + 启动参数**。Firefox 够新，还得启动时带 `--remote-enable-system-access` |
+| 能力                                                | 判定依据                                                                                                  |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `userPrompt`                                        | **订阅结果**。Firefox 接受了 `browsingContext.userPromptOpened` 订阅 → 支持。这是更强的证据，优先于版本号 |
+| `userContexts` / `storageCookies`                   | **实探**。真的发一次 `browser.getUserContexts` / `storage.getCookies`，看是否成功                         |
+| `networkIntercept`                                  | **实探**。发 `network.addIntercept`，立刻 `network.removeIntercept` 收掉                                  |
+| `webExtension` / `networkBodies` / `downloadEvents` | **版本号**。探测它们需要真的装扩展或读响应体，不适合当探针                                                |
+| `privilegedContext`                                 | **版本号 + 启动参数**。Firefox 够新，还得启动时带 `--remote-enable-system-access`                         |
 
 `browser_status` 的 `capabilities.featureDetails` 里每一项都带 `source`
 （`probe` / `version`）和 `reason`，可以据此判断结论有多硬。浏览器没运行时整张矩阵的

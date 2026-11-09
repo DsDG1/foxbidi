@@ -1,14 +1,27 @@
 {
   "name": "firefox-browser",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
-  "description": "Drive a real Firefox via WebDriver BiDi from MCP tools \u2014 zero npm dependencies.",
+  "description": "Drive a real Firefox via WebDriver BiDi from MCP tools — zero npm dependencies.",
   "license": "MIT",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test test/*.test.js test/integration/*.test.js"
+    "test": "node --test test/*.test.js test/integration/*.test.js",
+    "test:unit": "node --test test/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/*.test.js test/integration/*.test.js",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate": "node tools/validate-package.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2"
   }
 }

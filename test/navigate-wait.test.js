@@ -8,11 +8,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  navigate,
-  normalizeWaitStrategy,
-  NAV_WAIT_STRATEGIES,
-} from '../lib/bidi/protocol.js'
+import { navigate, normalizeWaitStrategy, NAV_WAIT_STRATEGIES } from '../lib/bidi/protocol.js'
 
 /**
  * A fake BiDi client that records the params it was asked to send.

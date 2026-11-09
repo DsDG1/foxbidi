@@ -70,10 +70,7 @@ describe('profile.detectUserProfile', () => {
 
   test('picks the profile marked Default=1', () => {
     const base = makeFirefoxDir({
-      profiles: [
-        { dir: 'abc.default', default: true },
-        { dir: 'def.default-esr' },
-      ],
+      profiles: [{ dir: 'abc.default', default: true }, { dir: 'def.default-esr' }],
     })
     const p = detectUserProfile(base)
     assert.ok(p.endsWith('abc.default'))
@@ -83,10 +80,7 @@ describe('profile.detectUserProfile', () => {
     // The in-use profile is the one holding the live session, even when
     // profiles.ini points Default=1 at a different (untouched) profile.
     const base = makeFirefoxDir({
-      profiles: [
-        { dir: 'abc.default', default: true },
-        { dir: 'def.default-esr' },
-      ],
+      profiles: [{ dir: 'abc.default', default: true }, { dir: 'def.default-esr' }],
     })
     // Firefox's lock is a SYMLINK named `lock` (plus a `.parentlock` file).
     symlinkSync('127.0.1.1:+1234', join(base, 'def.default-esr', 'lock'))
@@ -98,10 +92,7 @@ describe('profile.detectUserProfile', () => {
 
   test('falls back to a conventional name when no Default=1 exists', () => {
     const base = makeFirefoxDir({
-      profiles: [
-        { dir: 'aaa.custom' },
-        { dir: 'zzz.default-release' },
-      ],
+      profiles: [{ dir: 'aaa.custom' }, { dir: 'zzz.default-release' }],
     })
     const p = detectUserProfile(base)
     assert.ok(p.endsWith('zzz.default-release'))
@@ -126,10 +117,7 @@ describe('profile.detectUserProfile', () => {
 
   test('returns null when every listed profile is missing', () => {
     const base = mkdtempSync(join(tmpRoot, 'ff-empty-'))
-    writeFileSync(
-      join(base, 'profiles.ini'),
-      '[Profile0]\nPath=gone.default\nDefault=1\n',
-    )
+    writeFileSync(join(base, 'profiles.ini'), '[Profile0]\nPath=gone.default\nDefault=1\n')
     assert.equal(detectUserProfile(base), null)
   })
 })

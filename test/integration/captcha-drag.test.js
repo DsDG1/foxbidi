@@ -28,9 +28,7 @@ const { getTree } = await import(absPath('lib/bidi/protocol.js'))
 const inputs = await import(absPath('lib/firefox/inputs.js'))
 
 const firefoxBin = detectFirefoxBin()
-const skip = firefoxBin
-  ? false
-  : 'firefox is not installed — skipping the live-browser drag test'
+const skip = firefoxBin ? false : 'firefox is not installed — skipping the live-browser drag test'
 
 /** The slider page under test. */
 const PAGE = `<!doctype html>

@@ -107,12 +107,7 @@ describe('encodeCombo', () => {
 describe('buildKeyActions', () => {
   test('a modifier is held down across the target key', () => {
     const actions = buildKeyActions([KEY_CODES.CONTROL, 'a'])
-    assert.deepEqual(shape(actions), [
-      'keyDown:CTRL',
-      'keyDown:a',
-      'keyUp:a',
-      'keyUp:CTRL',
-    ])
+    assert.deepEqual(shape(actions), ['keyDown:CTRL', 'keyDown:a', 'keyUp:a', 'keyUp:CTRL'])
   })
 
   test('the modifier is released strictly AFTER the target key', () => {

@@ -26,10 +26,7 @@
 // mismatched payload fails the call. Every tool therefore declares a schema
 // and always returns a matching payload, on the error path too.
 
-import {
-  getFirefoxProvider,
-  resetFirefoxProvider,
-} from './lib/firefox/provider.js'
+import { getFirefoxProvider, resetFirefoxProvider } from './lib/firefox/provider.js'
 import {
   outputSchema,
   toStructured,
@@ -90,14 +87,9 @@ const provider = getFirefoxProvider({
 // ---------------------------------------------------------------------------
 
 const SERVER_NAME = 'firefox-browser'
-const SERVER_VERSION = '2.2.0'
+const SERVER_VERSION = '2.3.0'
 const LATEST_PROTOCOL_VERSION = '2025-11-25'
-const SUPPORTED_PROTOCOL_VERSIONS = [
-  '2025-11-25',
-  '2025-06-18',
-  '2025-03-26',
-  '2024-11-05',
-]
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 
 const INSTRUCTIONS = [
   'Drive a real Firefox over WebDriver BiDi.',
@@ -145,8 +137,7 @@ const INSTRUCTIONS = [
 
 const CONTEXT_SCHEMA = {
   type: 'string',
-  description:
-    'Target browsing context. Omit to use the most recently focused tab.',
+  description: 'Target browsing context. Omit to use the most recently focused tab.',
 }
 
 const REF_SCHEMA = {
@@ -184,7 +175,10 @@ const TARGET_SCHEMA = outputSchema({
 /** Schema for tools that report an action effect. */
 const EFFECT_SCHEMA = outputSchema({
   properties: {
-    effect: { type: 'object', description: 'Before/after comparison proving whether the action landed.' },
+    effect: {
+      type: 'object',
+      description: 'Before/after comparison proving whether the action landed.',
+    },
   },
 })
 
@@ -235,8 +229,7 @@ const TOOLS = [
   },
   {
     name: 'browser_tabs',
-    description:
-      'List the open tabs and iframes with their browsing context ids.',
+    description: 'List the open tabs and iframes with their browsing context ids.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     outputSchema: BASE_SCHEMA,
     annotations: { readOnlyHint: true },
@@ -265,7 +258,10 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'URL to navigate to. A missing scheme is filled in as https.' },
+        url: {
+          type: 'string',
+          description: 'URL to navigate to. A missing scheme is filled in as https.',
+        },
         contextId: CONTEXT_SCHEMA,
         wait: {
           type: 'string',
@@ -285,7 +281,7 @@ const TOOLS = [
   {
     name: 'browser_snapshot',
     description:
-      'List the page\'s interactive elements with stable refs, roles and names. START HERE — take a snapshot, then act on a ref instead of guessing CSS selectors. Reaches into open shadow roots, and can include iframe contents.',
+      "List the page's interactive elements with stable refs, roles and names. START HERE — take a snapshot, then act on a ref instead of guessing CSS selectors. Reaches into open shadow roots, and can include iframe contents.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -323,19 +319,31 @@ const TOOLS = [
     },
     outputSchema: outputSchema({
       properties: {
-        elements: { type: 'array', description: 'The elements found, each with ref, role and name.' },
+        elements: {
+          type: 'array',
+          description: 'The elements found, each with ref, role and name.',
+        },
         snapshotId: { type: 'number', description: 'Increments with every snapshot.' },
         count: { type: 'number', description: 'Number of elements returned.' },
         total: { type: 'number', description: 'Number of elements found in total.' },
-        truncated: { type: 'boolean', description: 'True when more elements exist than were returned.' },
+        truncated: {
+          type: 'boolean',
+          description: 'True when more elements exist than were returned.',
+        },
         hasMore: { type: 'boolean', description: 'True when more elements can be fetched.' },
         nextOffset: { type: 'number', description: 'Offset to pass to fetch the next page.' },
         refMode: {
           type: 'string',
           description: '"registry" (refs live in the page, not the DOM) or "attribute" (fallback).',
         },
-        frames: { type: 'array', description: 'Per-frame element lists, when frames:"all" was requested.' },
-        texts: { type: 'array', description: 'Visible text blocks, when includeText was requested.' },
+        frames: {
+          type: 'array',
+          description: 'Per-frame element lists, when frames:"all" was requested.',
+        },
+        texts: {
+          type: 'array',
+          description: 'Visible text blocks, when includeText was requested.',
+        },
       },
     }),
     annotations: { readOnlyHint: true },
@@ -446,7 +454,7 @@ const TOOLS = [
   {
     name: 'browser_select_option',
     description:
-      'Choose an option in a <select> element, by value or by the option\'s visible text.',
+      "Choose an option in a <select> element, by value or by the option's visible text.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -491,8 +499,7 @@ const TOOLS = [
     requiresOneOf: ['ref', 'selector'],
     outputSchema: TARGET_SCHEMA,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    run: (args) =>
-      provider.check(args.selector, args.checked, args.contextId, { ref: args.ref }),
+    run: (args) => provider.check(args.selector, args.checked, args.contextId, { ref: args.ref }),
   },
   {
     name: 'browser_hover',
@@ -520,7 +527,10 @@ const TOOLS = [
       type: 'object',
       properties: {
         ref: REF_SCHEMA,
-        selector: { type: 'string', description: 'CSS selector of the element to scroll into view.' },
+        selector: {
+          type: 'string',
+          description: 'CSS selector of the element to scroll into view.',
+        },
         contextId: CONTEXT_SCHEMA,
         direction: {
           type: 'string',
@@ -649,10 +659,16 @@ const TOOLS = [
     },
     outputSchema: outputSchema({
       properties: {
-        requests: { type: 'array', description: 'The captured requests, with URLs stripped of query and fragment.' },
+        requests: {
+          type: 'array',
+          description: 'The captured requests, with URLs stripped of query and fragment.',
+        },
         count: { type: 'number', description: 'Number of requests returned.' },
         total: { type: 'number', description: 'Number of requests matching the filter.' },
-        lastSequence: { type: 'number', description: 'Sequence number of the most recent request.' },
+        lastSequence: {
+          type: 'number',
+          description: 'Sequence number of the most recent request.',
+        },
         body: { type: 'string', description: 'The response body, when one was requested.' },
         bodyAvailable: { type: 'boolean', description: 'True when the response body was fetched.' },
       },
@@ -739,7 +755,7 @@ const TOOLS = [
         },
         selector: {
           type: 'string',
-          description: 'Read only this element\'s text instead of the whole page.',
+          description: "Read only this element's text instead of the whole page.",
         },
       },
       additionalProperties: false,
@@ -847,7 +863,7 @@ const TOOLS = [
   {
     name: 'browser_handle_dialog',
     description:
-      'Handle a JavaScript dialog (alert / confirm / prompt / beforeunload). Dialogs are closed automatically by default and reported in the previous action\'s effect; use this to accept, dismiss, or answer one explicitly.',
+      "Handle a JavaScript dialog (alert / confirm / prompt / beforeunload). Dialogs are closed automatically by default and reported in the previous action's effect; use this to accept, dismiss, or answer one explicitly.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -883,7 +899,7 @@ const TOOLS = [
   {
     name: 'browser_context',
     description:
-      'Manage Firefox containers — isolated identities with separate cookies, localStorage and cache. Use it to hold several accounts of the same site side by side, or to keep a task\'s login state from leaking into other work.',
+      "Manage Firefox containers — isolated identities with separate cookies, localStorage and cache. Use it to hold several accounts of the same site side by side, or to keep a task's login state from leaking into other work.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -993,7 +1009,8 @@ const TOOLS = [
         },
         cookie: {
           type: 'object',
-          description: 'The cookie to write, e.g. {"name":"sid","value":"x","domain":"example.com"}.',
+          description:
+            'The cookie to write, e.g. {"name":"sid","value":"x","domain":"example.com"}.',
           additionalProperties: true,
         },
         confirm: CONFIRM_SCHEMA,
@@ -1124,7 +1141,10 @@ const TOOLS = [
         },
         solver: { type: 'string', description: 'Which solver handled it.' },
         tokenLength: { type: 'number', description: 'Length of the token the site issued.' },
-        detected: { type: 'array', description: 'The challenge kinds that were found on the page.' },
+        detected: {
+          type: 'array',
+          description: 'The challenge kinds that were found on the page.',
+        },
         attempts: { type: 'array', description: 'Per-challenge outcome when solver is "auto".' },
         message: { type: 'string', description: 'A plain-language explanation of what happened.' },
         notes: { type: 'array', description: 'Caveats worth knowing about the result.' },
@@ -1182,7 +1202,8 @@ const TOOLS = [
         contextId: CONTEXT_SCHEMA,
         stopOnError: {
           type: 'boolean',
-          description: 'Stop at the first failing step (default true). Steps already run are not undone.',
+          description:
+            'Stop at the first failing step (default true). Steps already run are not undone.',
         },
       },
       required: ['steps'],
@@ -1239,7 +1260,7 @@ const TOOLS = [
   {
     name: 'browser_config',
     description:
-      'Read or change the plugin\'s behaviour: the tool preset, how JavaScript dialogs are handled, and the default snapshot size.',
+      "Read or change the plugin's behaviour: the tool preset, how JavaScript dialogs are handled, and the default snapshot size.",
     inputSchema: {
       type: 'object',
       properties: {

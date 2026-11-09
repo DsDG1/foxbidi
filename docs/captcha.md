@@ -6,26 +6,26 @@
 { "solver": "auto", "sttUrl": "http://127.0.0.1:8000", "visionUrl": "", "timeoutMs": 30000 }
 ```
 
-| 参数 | 作用 |
-|---|---|
-| `solver` | `auto`（默认）或 `turnstile` / `recaptcha` / `hcaptcha` / `geetest` / `pow` / `spin` |
-| `sttUrl` | 语音识别服务（Whisper / OpenAI 兼容）。音频挑战必需 |
-| `visionUrl` | 图片识别服务。可选，默认不启用图片九宫格 |
-| `timeoutMs` | 整体超时，默认 60 秒 |
+| 参数        | 作用                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------ |
+| `solver`    | `auto`（默认）或 `turnstile` / `recaptcha` / `hcaptcha` / `geetest` / `pow` / `spin` |
+| `sttUrl`    | 语音识别服务（Whisper / OpenAI 兼容）。音频挑战必需                                  |
+| `visionUrl` | 图片识别服务。可选，默认不启用图片九宫格                                             |
+| `timeoutMs` | 整体超时，默认 60 秒                                                                 |
 
 `browser_captcha_status` 是配套的只读工具：`{"kind":"turnstile"}`，读站点会用的那个 token，
 不点击、不输入。用来确认"这个挑战到底解开了没有"。
 
 ## 支持状态
 
-| 挑战 | 状态 | 说明 |
-|---|---|---|
-| Cloudflare Turnstile | ✅ **已端到端验证** | 点 checkbox，轮询站点发放的 token |
-| reCAPTCHA v2 | ⚠️ 未在本机端到端验证 | 走音频挑战，需要 `sttUrl`；本机访问不到 google.com |
-| hCaptcha | ⚠️ 未在本机端到端验证 | 同上；**不支持图片九宫格** |
-| GeeTest 滑块 | ⚠️ 拖拽与缺口匹配已分别验证，站点端到端未验 | 纯数学找缺口，无模型 |
-| PoW（ALTCHA / Cap / Anubis / Friendly Captcha） | ⚠️ 未在真实站点验证 | 页面自己跑 hash，插件只等 token |
-| 百度旋转验证码（`spin`，"拖动左侧滑块使图片为正"） | ✅ **已端到端验证** | 纯几何求正立角度，无模型；见下 |
+| 挑战                                               | 状态                                        | 说明                                               |
+| -------------------------------------------------- | ------------------------------------------- | -------------------------------------------------- |
+| Cloudflare Turnstile                               | ✅ **已端到端验证**                         | 点 checkbox，轮询站点发放的 token                  |
+| reCAPTCHA v2                                       | ⚠️ 未在本机端到端验证                       | 走音频挑战，需要 `sttUrl`；本机访问不到 google.com |
+| hCaptcha                                           | ⚠️ 未在本机端到端验证                       | 同上；**不支持图片九宫格**                         |
+| GeeTest 滑块                                       | ⚠️ 拖拽与缺口匹配已分别验证，站点端到端未验 | 纯数学找缺口，无模型                               |
+| PoW（ALTCHA / Cap / Anubis / Friendly Captcha）    | ⚠️ 未在真实站点验证                         | 页面自己跑 hash，插件只等 token                    |
+| 百度旋转验证码（`spin`，"拖动左侧滑块使图片为正"） | ✅ **已端到端验证**                         | 纯几何求正立角度，无模型；见下                     |
 
 ## 百度旋转验证码（`spin`）
 
@@ -46,7 +46,7 @@
    - 族内用**带掩膜的分带细节**（正立照片的细节呈"上稀—中密—下疏"的山形）
      加上**上下亮度差**（天空比地面亮）来判定，
    - 最后在族内做小范围精修（对齐分数 + 水平边缘能量）。
-   旋转采样用**双线性**：最近邻会把每条边变成阶梯，阶梯自带的边缘方向会把角度带偏好几度。
+     旋转采样用**双线性**：最近邻会把每条边变成阶梯，阶梯自带的边缘方向会把角度带偏好几度。
 2. **拟人化拖动**。先用真实指针事件在图片区走一段轨迹（站点会记录鼠标路径），
    再按住滑块拖到目标位置：缓动 + 每步停顿 + 轻微纵向抖动。
 3. **读服务端判定**。页面里的 `XMLHttpRequest` 被 hook 住，`/cap/log` 的响应
@@ -72,19 +72,19 @@
 `ok: true` 只在 token 长度 > 0 时返回（`spin` 例外：它的判据是服务端的 `data.op`）。
 没解开就是 `ok: false`，并带一个 `status`：
 
-| status | 含义 |
-|---|---|
-| `not_detected` | 页面上没有受支持的挑战 |
-| `unknown_solver` | `solver` 名字不认识 |
-| `checkbox_not_found` | 找到了挑战框架，但框住控件（可能 closed shadow root 没 patch 成功） |
-| `stt_unavailable` / `stt_failed` / `stt_empty` / `stt_timeout` / `stt_unreachable` | 语音识别服务的问题 |
-| `vision_unavailable` | 遇到图片九宫格，但没配 `visionUrl` |
-| `geometry_unavailable` / `no_puzzle_canvas` / `notch_not_found` | 滑块几何读不到 |
-| `drag_rejected` | 拖了，但站点没认（`spin`：角度被拒） |
-| `low_confidence` | （`spin`）这张图分不清正倒，没有提交，换图重来 |
-| `risk_challenge` | （`spin`）角度被接受，但站点要求再验证一次 |
-| `pow_timeout` | PoW 超时没出 token |
-| `solve_failed` | auto 模式下全都试过了都没成功，`attempts` 里逐条列了 |
+| status                                                                             | 含义                                                                |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `not_detected`                                                                     | 页面上没有受支持的挑战                                              |
+| `unknown_solver`                                                                   | `solver` 名字不认识                                                 |
+| `checkbox_not_found`                                                               | 找到了挑战框架，但框住控件（可能 closed shadow root 没 patch 成功） |
+| `stt_unavailable` / `stt_failed` / `stt_empty` / `stt_timeout` / `stt_unreachable` | 语音识别服务的问题                                                  |
+| `vision_unavailable`                                                               | 遇到图片九宫格，但没配 `visionUrl`                                  |
+| `geometry_unavailable` / `no_puzzle_canvas` / `notch_not_found`                    | 滑块几何读不到                                                      |
+| `drag_rejected`                                                                    | 拖了，但站点没认（`spin`：角度被拒）                                |
+| `low_confidence`                                                                   | （`spin`）这张图分不清正倒，没有提交，换图重来                      |
+| `risk_challenge`                                                                   | （`spin`）角度被接受，但站点要求再验证一次                          |
+| `pow_timeout`                                                                      | PoW 超时没出 token                                                  |
+| `solve_failed`                                                                     | auto 模式下全都试过了都没成功，`attempts` 里逐条列了                |
 
 ## 降级原则
 
@@ -117,10 +117,10 @@
 
 ## 依赖的两个浏览器能力
 
-| 能力 | 最低版本（实测口径） | 命令 |
-|---|---|---|
-| `captchaPreloadScript` | FF 140 ESR | `script.addPreloadScript` |
-| `captchaDrag` | FF 140 ESR | `input.performActions` 的 pointer 动作 |
+| 能力                   | 最低版本（实测口径） | 命令                                   |
+| ---------------------- | -------------------- | -------------------------------------- |
+| `captchaPreloadScript` | FF 140 ESR           | `script.addPreloadScript`              |
+| `captchaDrag`          | FF 140 ESR           | `input.performActions` 的 pointer 动作 |
 
 Firefox 的 `script.addPreloadScript` 参数形状与 spec 不同（用 `functionDeclaration` 字符串，
 目标用 `context` 字符串），细节见 `lib/bidi/protocol.js` 的注释。

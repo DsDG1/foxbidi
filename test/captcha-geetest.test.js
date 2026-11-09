@@ -78,14 +78,8 @@ describe('findNotch', () => {
     const { bg, piece, notch } = makePuzzle()
     const found = findNotch(bg, piece)
     assert.ok(found, 'the gap should have been found')
-    assert.ok(
-      Math.abs(found.x - notch.x) <= 2,
-      `x should be near ${notch.x}, got ${found.x}`,
-    )
-    assert.ok(
-      Math.abs(found.y - notch.y) <= 2,
-      `y should be near ${notch.y}, got ${found.y}`,
-    )
+    assert.ok(Math.abs(found.x - notch.x) <= 2, `x should be near ${notch.x}, got ${found.x}`)
+    assert.ok(Math.abs(found.y - notch.y) <= 2, `y should be near ${notch.y}, got ${found.y}`)
   })
 
   test('scores the correct gap far above the alternatives', () => {
@@ -146,10 +140,7 @@ describe('computeDragDistance', () => {
   })
 
   test('returns zero when the handle cannot be measured', () => {
-    assert.equal(
-      computeDragDistance({ notchX: 10, bgWidth: 100, bgRect: null, knobRect: null }),
-      0,
-    )
+    assert.equal(computeDragDistance({ notchX: 10, bgWidth: 100, bgRect: null, knobRect: null }), 0)
   })
 })
 

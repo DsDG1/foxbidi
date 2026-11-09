@@ -36,7 +36,12 @@
 2.0 起插件会自动关掉弹窗，并在动作的 `effect.dialog` 里告诉你：
 
 ```json
-{ "effect": { "verified": true, "dialog": { "type": "confirm", "message": "确定吗？", "handled": "dismiss" } } }
+{
+  "effect": {
+    "verified": true,
+    "dialog": { "type": "confirm", "message": "确定吗？", "handled": "dismiss" }
+  }
+}
 ```
 
 如果还是卡：
@@ -66,7 +71,7 @@
 4. **它不可见。** 快照只收渲染出来的元素（尺寸非零、没被 `display:none` / `visibility:hidden`
    / `opacity:0` 藏起来）。
 5. **它没有匹配交互选择器。** 选择器覆盖 `a[href] / button / input / select / textarea /
-   summary / [role] / [onclick] / [tabindex] / [contenteditable="true"]`。一个纯 `<div>`
+summary / [role] / [onclick] / [tabindex] / [contenteditable="true"]`。一个纯 `<div>`
    不会被收——给它加 `role` 或 `tabindex` 就有了。
 
 ## "能力不可用"（capability_unavailable）
@@ -74,8 +79,12 @@
 这条错误是**设计好的**，不是故障。它写明了要哪个版本、当前是哪个版本、还能怎么做。
 
 ```json
-{ "error": "capability_unavailable", "feature": "networkBodies",
-  "required": "Firefox >= 144", "detected": "140.11.0esr" }
+{
+  "error": "capability_unavailable",
+  "feature": "networkBodies",
+  "required": "Firefox >= 144",
+  "detected": "140.11.0esr"
+}
 ```
 
 对照 [`capabilities-matrix.md`](./capabilities-matrix.md) 里的替代方案。
@@ -93,12 +102,12 @@ BiDi 命令超时——**但页面其实已经加载好了**。
 
 ## "浏览器起不来"
 
-| 现象 | 原因 | 处理 |
-|---|---|---|
-| `firefox not found` | 装在非标准位置 | `FIREFOX_BROWSER_BIN=/path/to/firefox` |
-| `profile copy failed` | 源 profile 不存在 | `FIREFOX_BROWSER_PROFILE=/path/to/profile` |
-| `firefox exited immediately: the profile copy … is locked` | 之前的实例还活着 | `browser_stop({keep:true})` 让插件重新接管那个实例 |
-| `port 9333 is served by another Firefox instance` | 端口被别人的 Firefox 占了 | 插件会自动换端口；也可以用 `FIREFOX_BROWSER_PORT` 指定 |
+| 现象                                                       | 原因                      | 处理                                                   |
+| ---------------------------------------------------------- | ------------------------- | ------------------------------------------------------ |
+| `firefox not found`                                        | 装在非标准位置            | `FIREFOX_BROWSER_BIN=/path/to/firefox`                 |
+| `profile copy failed`                                      | 源 profile 不存在         | `FIREFOX_BROWSER_PROFILE=/path/to/profile`             |
+| `firefox exited immediately: the profile copy … is locked` | 之前的实例还活着          | `browser_stop({keep:true})` 让插件重新接管那个实例     |
+| `port 9333 is served by another Firefox instance`          | 端口被别人的 Firefox 占了 | 插件会自动换端口；也可以用 `FIREFOX_BROWSER_PORT` 指定 |
 
 ## "两个浏览器的登录态不一样"
 

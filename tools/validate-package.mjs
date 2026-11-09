@@ -95,11 +95,23 @@ function insideRoot(p) {
 const manifestPath = '.minimax-plugin/plugin.json'
 const manifest = readJson(manifestPath)
 if (manifest) {
-  for (const field of ['schemaVersion', 'name', 'displayName', 'version', 'description', 'author', 'category', 'icon', 'exampleQueries']) {
+  for (const field of [
+    'schemaVersion',
+    'name',
+    'displayName',
+    'version',
+    'description',
+    'author',
+    'category',
+    'icon',
+    'exampleQueries',
+  ]) {
     if (manifest[field] === undefined) fail(`manifest: missing "${field}"`)
   }
-  if (!/^\d+\.\d+\.\d+$/.test(manifest.version || '')) fail(`manifest: version "${manifest.version}" is not SemVer`)
-  if (!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(manifest.name || '')) fail(`manifest: bad name "${manifest.name}"`)
+  if (!/^\d+\.\d+\.\d+$/.test(manifest.version || ''))
+    fail(`manifest: version "${manifest.version}" is not SemVer`)
+  if (!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(manifest.name || ''))
+    fail(`manifest: bad name "${manifest.name}"`)
   if (!Array.isArray(manifest.exampleQueries) || manifest.exampleQueries.length === 0) {
     fail('manifest: exampleQueries must be a non-empty array')
   }
@@ -119,17 +131,20 @@ if (manifest) {
   for (const field of ['icon', 'darkIcon']) {
     const rel = manifest[field]
     if (!rel) continue
-    if (rel.includes('..') || rel.startsWith('/') || rel.includes('\\')) fail(`manifest: ${field} "${rel}" is not a portable relative path`)
+    if (rel.includes('..') || rel.startsWith('/') || rel.includes('\\'))
+      fail(`manifest: ${field} "${rel}" is not a portable relative path`)
     const abs = join(ROOT, rel)
     if (!existsSync(abs)) fail(`manifest: ${field} "${rel}" does not exist`)
     else if (!insideRoot(abs)) fail(`manifest: ${field} "${rel}" escapes the plugin root`)
   }
   for (const rel of manifest.skills || []) {
-    if (rel.includes('..') || rel.startsWith('/')) fail(`manifest: skill path "${rel}" is not portable relative`)
+    if (rel.includes('..') || rel.startsWith('/'))
+      fail(`manifest: skill path "${rel}" is not portable relative`)
     if (!existsSync(join(ROOT, rel))) fail(`manifest: skill "${rel}" does not exist`)
   }
   for (const rel of manifest.mcpServers || []) {
-    if (rel.includes('..') || rel.startsWith('/')) fail(`manifest: mcp path "${rel}" is not portable relative`)
+    if (rel.includes('..') || rel.startsWith('/'))
+      fail(`manifest: mcp path "${rel}" is not portable relative`)
     if (!existsSync(join(ROOT, rel))) fail(`manifest: mcp "${rel}" does not exist`)
   }
   ok(`manifest ${manifest.name}@${manifest.version} — ${manifest.category}, apps=[]`)
@@ -149,7 +164,8 @@ if (existsSync(skillDir)) {
     }
     const fmName = (fm[1].match(/^name:\s*(.+)$/m) || [])[1]
     const fmDesc = (fm[1].match(/^description:\s*(.+)$/m) || [])[1]
-    if (!fmName || fmName.trim() !== name) fail(`skills/${name}/SKILL.md: frontmatter name "${fmName}" != directory`)
+    if (!fmName || fmName.trim() !== name)
+      fail(`skills/${name}/SKILL.md: frontmatter name "${fmName}" != directory`)
     if (!fmDesc || !fmDesc.trim()) fail(`skills/${name}/SKILL.md: empty description`)
     ok(`skill ${name}: frontmatter ok`)
   }
@@ -167,7 +183,8 @@ for (const rel of (manifest && manifest.mcpServers) || []) {
     }
     if (transport === 'stdio') {
       if (!def.command) fail(`${rel}: server "${name}" has no command`)
-      else if (String(def.command).includes('/')) fail(`${rel}: server "${name}" command must be PATH-resolved, got "${def.command}"`)
+      else if (String(def.command).includes('/'))
+        fail(`${rel}: server "${name}" command must be PATH-resolved, got "${def.command}"`)
     } else if (!def.url) {
       fail(`${rel}: server "${name}" has no url`)
     }

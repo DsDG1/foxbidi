@@ -103,8 +103,10 @@ function rotate(img, deg) {
       const tx = sx - x0
       const ty = sy - y0
       for (let k = 0; k < 4; k++) {
-        const top = img.data[(y0 * width + x0) * 4 + k] * (1 - tx) + img.data[(y0 * width + x1) * 4 + k] * tx
-        const bottom = img.data[(y1 * width + x0) * 4 + k] * (1 - tx) + img.data[(y1 * width + x1) * 4 + k] * tx
+        const top =
+          img.data[(y0 * width + x0) * 4 + k] * (1 - tx) + img.data[(y0 * width + x1) * 4 + k] * tx
+        const bottom =
+          img.data[(y1 * width + x0) * 4 + k] * (1 - tx) + img.data[(y1 * width + x1) * 4 + k] * tx
         out[di + k] = top * (1 - ty) + bottom * ty
       }
     }

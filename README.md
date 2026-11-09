@@ -145,9 +145,21 @@ elements — role, accessible name, state, geometry — each with a short stable
   "snapshotId": 3,
   "refMode": "registry",
   "elements": [
-    { "ref": "e3", "role": "textbox", "name": "User", "rect": {"x":8,"y":40,"w":280,"h":24}, "inViewport": true },
-    { "ref": "e5", "role": "button",  "name": "Sign in", "rect": {"x":8,"y":80,"w":90,"h":32}, "inViewport": true }
-  ]
+    {
+      "ref": "e3",
+      "role": "textbox",
+      "name": "User",
+      "rect": { "x": 8, "y": 40, "w": 280, "h": 24 },
+      "inViewport": true,
+    },
+    {
+      "ref": "e5",
+      "role": "button",
+      "name": "Sign in",
+      "rect": { "x": 8, "y": 80, "w": 90, "h": 32 },
+      "inViewport": true,
+    },
+  ],
 }
 ```
 
@@ -180,61 +192,61 @@ so a host can consume the result as data rather than parsing prose.
 
 ### Lifecycle
 
-| Tool | Arguments | Behaviour |
-|---|---|---|
-| `browser_start` | — | Copy the profile, launch Firefox, open a BiDi session. Idempotent and concurrency-safe. |
-| `browser_stop` | `keep?: boolean` | End the session; terminates the process unless `keep` is true. A later `browser_start` re-adopts the kept instance. |
-| `browser_status` | — | Instance state, port, pid, session id, profile info, the capability matrix, the ref mode and the dialog policy. |
-| `browser_new_tab` | `url?: string` | Open a tab, optionally navigating it. |
-| `browser_navigate` | `url`, `contextId?`, `wait?` | Navigate a tab. `wait` is `none`, `interactive` or `complete` (default). |
-| `browser_tabs` | — | Open tabs and iframes with their context ids. |
-| `browser_close_tab` | `contextId?` | Close a tab. |
-| `browser_handoff` | `to`, `url?`, `contextId?`, `carry?` | Move the page between this Firefox and the host's in-app browser. |
+| Tool                | Arguments                            | Behaviour                                                                                                           |
+| ------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `browser_start`     | —                                    | Copy the profile, launch Firefox, open a BiDi session. Idempotent and concurrency-safe.                             |
+| `browser_stop`      | `keep?: boolean`                     | End the session; terminates the process unless `keep` is true. A later `browser_start` re-adopts the kept instance. |
+| `browser_status`    | —                                    | Instance state, port, pid, session id, profile info, the capability matrix, the ref mode and the dialog policy.     |
+| `browser_new_tab`   | `url?: string`                       | Open a tab, optionally navigating it.                                                                               |
+| `browser_navigate`  | `url`, `contextId?`, `wait?`         | Navigate a tab. `wait` is `none`, `interactive` or `complete` (default).                                            |
+| `browser_tabs`      | —                                    | Open tabs and iframes with their context ids.                                                                       |
+| `browser_close_tab` | `contextId?`                         | Close a tab.                                                                                                        |
+| `browser_handoff`   | `to`, `url?`, `contextId?`, `carry?` | Move the page between this Firefox and the host's in-app browser.                                                   |
 
 ### Discovery and reading
 
-| Tool | Arguments | Behaviour |
-|---|---|---|
-| `browser_snapshot` | `contextId?`, `offset?`, `maxElements?`, `roleFilter?`, `nameContains?`, `includeText?`, `frames?` | Elements with role, name, state, geometry and a stable `ref`. Reaches into shadow roots and (optionally) iframes. |
-| `browser_text` | `contextId?`, `maxChars?`, `offset?`, `selector?` | Visible text. Capped at 8000 characters by default; `truncated` and `nextOffset` let you page through. |
-| `browser_evaluate` | `expression`, `contextId?` | Evaluate JavaScript in the page. |
-| `browser_screenshot` | `contextId?`, `fullPage?`, `elementRef?` | PNG screenshot, delivered as an MCP image block plus an `imageUrl` (see below). |
-| `browser_logs` | `limit?`, `levels?`, `channel?`, `filter?` | Buffered logs, split into `console` (the page), `plugin` (what the plugin did) and `bidi` (a command Firefox refused). |
-| `browser_network` | `limit?`, `status?`, `types?`, `filter?`, `requestId?` | Captured requests. URLs never carry a query string. `requestId` also fetches the response body (Firefox 144+). |
+| Tool                 | Arguments                                                                                          | Behaviour                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `browser_snapshot`   | `contextId?`, `offset?`, `maxElements?`, `roleFilter?`, `nameContains?`, `includeText?`, `frames?` | Elements with role, name, state, geometry and a stable `ref`. Reaches into shadow roots and (optionally) iframes.      |
+| `browser_text`       | `contextId?`, `maxChars?`, `offset?`, `selector?`                                                  | Visible text. Capped at 8000 characters by default; `truncated` and `nextOffset` let you page through.                 |
+| `browser_evaluate`   | `expression`, `contextId?`                                                                         | Evaluate JavaScript in the page.                                                                                       |
+| `browser_screenshot` | `contextId?`, `fullPage?`, `elementRef?`                                                           | PNG screenshot, delivered as an MCP image block plus an `imageUrl` (see below).                                        |
+| `browser_logs`       | `limit?`, `levels?`, `channel?`, `filter?`                                                         | Buffered logs, split into `console` (the page), `plugin` (what the plugin did) and `bidi` (a command Firefox refused). |
+| `browser_network`    | `limit?`, `status?`, `types?`, `filter?`, `requestId?`                                             | Captured requests. URLs never carry a query string. `requestId` also fetches the response body (Firefox 144+).         |
 
 ### Actions
 
 All action tools accept **either** `ref` (preferred) **or** `selector`. When
 both are given, the ref wins and the result says so.
 
-| Tool | Arguments | Behaviour |
-|---|---|---|
-| `browser_click` | `ref?` / `selector?`, `button?`, `clickCount?`, `confirm?` | Click with real pointer events. |
-| `browser_type` | `ref?` / `selector?`, `text`, `clear?`, `submit?`, `confirm?` | Focus and type character by character. |
-| `browser_press_key` | `key`, `contextId?` | Key or shortcut: `Enter`, `Escape`, `Ctrl+Enter`. A shortcut holds its modifier down across the target key. |
-| `browser_select_option` | `ref?` / `selector?`, `value` | Choose a `<select>` option by value. |
-| `browser_check` | `ref?` / `selector?`, `checked` | Check or uncheck a checkbox / radio. |
-| `browser_hover` | `ref?` / `selector?` | Move the pointer over an element. |
-| `browser_scroll` | `ref?` / `selector?`, `direction?`, `amount?` | Scroll the page, or bring an element into view. |
-| `browser_upload` | `ref?` / `selector?`, `paths`, `confirm?` | Attach local files to a file input. |
-| `browser_wait_for` | `for?`, `selector?`, `text?`, `timeoutMs?` | Wait for a selector, text, load, or network idle. |
+| Tool                    | Arguments                                                     | Behaviour                                                                                                   |
+| ----------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `browser_click`         | `ref?` / `selector?`, `button?`, `clickCount?`, `confirm?`    | Click with real pointer events.                                                                             |
+| `browser_type`          | `ref?` / `selector?`, `text`, `clear?`, `submit?`, `confirm?` | Focus and type character by character.                                                                      |
+| `browser_press_key`     | `key`, `contextId?`                                           | Key or shortcut: `Enter`, `Escape`, `Ctrl+Enter`. A shortcut holds its modifier down across the target key. |
+| `browser_select_option` | `ref?` / `selector?`, `value`                                 | Choose a `<select>` option by value.                                                                        |
+| `browser_check`         | `ref?` / `selector?`, `checked`                               | Check or uncheck a checkbox / radio.                                                                        |
+| `browser_hover`         | `ref?` / `selector?`                                          | Move the pointer over an element.                                                                           |
+| `browser_scroll`        | `ref?` / `selector?`, `direction?`, `amount?`                 | Scroll the page, or bring an element into view.                                                             |
+| `browser_upload`        | `ref?` / `selector?`, `paths`, `confirm?`                     | Attach local files to a file input.                                                                         |
+| `browser_wait_for`      | `for?`, `selector?`, `text?`, `timeoutMs?`                    | Wait for a selector, text, load, or network idle.                                                           |
 
 The browser starts on demand — the first tool call launches it, so there is no
 separate launch step.
 
 ### Workflow and Firefox-only
 
-| Tool | Arguments | Behaviour |
-|---|---|---|
-| `browser_batch` | `steps[]`, `stopOnError?` | Run several actions in one call — click, type, press a key, wait, snapshot. Stops at the first failure and reports how far it got. |
-| `browser_run_script` | `path`, `args?`, `contextId?` | Run a helper script in the page. Scripts live in `~/.mavis/ff-workspace/` so a repeatable sequence can be written once and reused. |
-| `browser_config` | `preset?`, `dialogPolicy?`, `maxSnapshotElements?` | Read or change the tool preset, the dialog policy and the default snapshot size. |
-| `browser_handle_dialog` | `action`, `text?` | Accept, dismiss, or answer a JavaScript dialog. |
-| `browser_context` | `action`, `userContext?`, `label?`, `url?` | Firefox containers: isolated cookies, localStorage and cache. Firefox 124+. |
-| `browser_extension` | `action`, `path?`, `extensionId?`, `permanent?`, `confirm?` | Install, uninstall or list WebExtensions. Firefox 137+. |
-| `browser_cookie` | `action`, `filter?`, `cookie?`, `confirm?` | Read or write cookies, including HttpOnly ones. Firefox 124+. |
-| `browser_intercept` | `action`, `patterns?` | Block requests whose URL matches. Matching happens in the plugin, and every request is released again, so the page never freezes. Firefox 124+. |
-| `browser_detectability` | `contextId?` | Measure how detectable this session is — honestly. |
+| Tool                    | Arguments                                                   | Behaviour                                                                                                                                       |
+| ----------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `browser_batch`         | `steps[]`, `stopOnError?`                                   | Run several actions in one call — click, type, press a key, wait, snapshot. Stops at the first failure and reports how far it got.              |
+| `browser_run_script`    | `path`, `args?`, `contextId?`                               | Run a helper script in the page. Scripts live in `~/.mavis/ff-workspace/` so a repeatable sequence can be written once and reused.              |
+| `browser_config`        | `preset?`, `dialogPolicy?`, `maxSnapshotElements?`          | Read or change the tool preset, the dialog policy and the default snapshot size.                                                                |
+| `browser_handle_dialog` | `action`, `text?`                                           | Accept, dismiss, or answer a JavaScript dialog.                                                                                                 |
+| `browser_context`       | `action`, `userContext?`, `label?`, `url?`                  | Firefox containers: isolated cookies, localStorage and cache. Firefox 124+.                                                                     |
+| `browser_extension`     | `action`, `path?`, `extensionId?`, `permanent?`, `confirm?` | Install, uninstall or list WebExtensions. Firefox 137+.                                                                                         |
+| `browser_cookie`        | `action`, `filter?`, `cookie?`, `confirm?`                  | Read or write cookies, including HttpOnly ones. Firefox 124+.                                                                                   |
+| `browser_intercept`     | `action`, `patterns?`                                       | Block requests whose URL matches. Matching happens in the plugin, and every request is released again, so the page never freezes. Firefox 124+. |
+| `browser_detectability` | `contextId?`                                                | Measure how detectable this session is — honestly.                                                                                              |
 
 See [`docs/firefox-only.md`](docs/firefox-only.md) for what these can do that a
 CDP-based harness cannot, and
@@ -245,10 +257,10 @@ requirements.
 
 This machine has two browser surfaces:
 
-| Surface | What it is | When to use it |
-|---|---|---|
-| **This plugin's Firefox** (default) | A real Firefox running on a copy of the user profile — full login state, real Firefox engine | **The default for every browsing task.** |
-| **The host's in-app browser** | The `mcp_browser` capability, i.e. the browser panel the host owns | When the user explicitly says "current browser" / "right-side browser" / "built-in browser", or wants to watch the work happen |
+| Surface                             | What it is                                                                                   | When to use it                                                                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **This plugin's Firefox** (default) | A real Firefox running on a copy of the user profile — full login state, real Firefox engine | **The default for every browsing task.**                                                                                       |
+| **The host's in-app browser**       | The `mcp_browser` capability, i.e. the browser panel the host owns                           | When the user explicitly says "current browser" / "right-side browser" / "built-in browser", or wants to watch the work happen |
 
 The in-app browser can drive Chrome and Edge, so it does carry a login state —
 it just cannot drive Firefox, because Firefox has no CDP.
@@ -273,7 +285,7 @@ surface they came from; only the URL is handed over.
 `browser_screenshot` returns the PNG as an MCP image content block, which the
 model receives natively — the image bytes never become text tokens.
 
-For the *user*, the result also carries an `imageUrl`: the plugin serves the
+For the _user_, the result also carries an `imageUrl`: the plugin serves the
 screenshot from a tiny HTTP server bound to `127.0.0.1`, under a path with a
 192-bit random token. A chat client that renders markdown — the webui does —
 turns
@@ -309,7 +321,7 @@ so keyword matching would misfire constantly. A false positive costs one extra
 `confirm: true`; a false negative can commit an irreversible action, so the
 gate leans strict.
 
-A refused action is stopped *before* the input is dispatched, and the result
+A refused action is stopped _before_ the input is dispatched, and the result
 carries `blocked: true`, `action`, `requiresConfirm: true` and a human-readable
 `hint`.
 
@@ -318,18 +330,18 @@ carries `blocked: true`, `action`, `requiresConfirm: true` and a human-readable
 All settings are environment variables. The MCP server inherits `HOME`,
 `PATH` and the other standard variables from the host.
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `FIREFOX_BROWSER_BIN` | auto-detected | Path to the Firefox binary. |
-| `FIREFOX_BROWSER_PORT` | `9333` | Preferred BiDi port; occupied ports are probed upward. |
-| `FIREFOX_BROWSER_HEADLESS` | `1` | Set to `0` for a visible window (manual CAPTCHA / login). |
-| `FIREFOX_BROWSER_PROFILE` | auto-detected | Source profile. Auto-detection prefers the profile a running Firefox holds. |
-| `FIREFOX_BROWSER_PROFILE_COPY` | see below | Base directory for the profile copy. |
-| `FIREFOX_BROWSER_TIMEOUT_MS` | `30000` | Per-BiDi-command timeout. |
-| `FIREFOX_BROWSER_READY_TIMEOUT_MS` | `30000` | How long to wait for the BiDi endpoint. |
-| `FIREFOX_BROWSER_PRIVILEGED` | `0` | Set to `1` to launch with `--remote-enable-system-access`, which unlocks the privileged chrome:// contexts (`about:preferences`, `about:addons`). |
-| `FIREFOX_BROWSER_PREFS` | — | JSON object of Firefox preferences to apply to the **profile copy** only, e.g. `{"privacy.resistFingerprinting":true}`. |
-| `FIREFOX_BROWSER_SCRIPT_ROOTS` | `~/.mavis/ff-workspace` | Colon-separated directories `browser_run_script` may read scripts from. |
+| Variable                           | Default                 | Meaning                                                                                                                                           |
+| ---------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FIREFOX_BROWSER_BIN`              | auto-detected           | Path to the Firefox binary.                                                                                                                       |
+| `FIREFOX_BROWSER_PORT`             | `9333`                  | Preferred BiDi port; occupied ports are probed upward.                                                                                            |
+| `FIREFOX_BROWSER_HEADLESS`         | `1`                     | Set to `0` for a visible window (manual CAPTCHA / login).                                                                                         |
+| `FIREFOX_BROWSER_PROFILE`          | auto-detected           | Source profile. Auto-detection prefers the profile a running Firefox holds.                                                                       |
+| `FIREFOX_BROWSER_PROFILE_COPY`     | see below               | Base directory for the profile copy.                                                                                                              |
+| `FIREFOX_BROWSER_TIMEOUT_MS`       | `30000`                 | Per-BiDi-command timeout.                                                                                                                         |
+| `FIREFOX_BROWSER_READY_TIMEOUT_MS` | `30000`                 | How long to wait for the BiDi endpoint.                                                                                                           |
+| `FIREFOX_BROWSER_PRIVILEGED`       | `0`                     | Set to `1` to launch with `--remote-enable-system-access`, which unlocks the privileged chrome:// contexts (`about:preferences`, `about:addons`). |
+| `FIREFOX_BROWSER_PREFS`            | —                       | JSON object of Firefox preferences to apply to the **profile copy** only, e.g. `{"privacy.resistFingerprinting":true}`.                           |
+| `FIREFOX_BROWSER_SCRIPT_ROOTS`     | `~/.mavis/ff-workspace` | Colon-separated directories `browser_run_script` may read scripts from.                                                                           |
 
 ### Where the profile copy lives
 
@@ -367,8 +379,8 @@ is all the Firefox remote agent allows anyway (one BiDi session per endpoint).
 ### Restarting after `browser_stop({keep: true})`
 
 `keep: true` leaves Firefox running, and a running Firefox keeps the profile
-copy locked — a second Firefox cannot open it, and Firefox reports *"Firefox is
-already running, but is not responding."* That is a **locked profile**, not a
+copy locked — a second Firefox cannot open it, and Firefox reports _"Firefox is
+already running, but is not responding."_ That is a **locked profile**, not a
 port conflict, and the plugin says so instead of guessing.
 
 The kept instance's BiDi endpoint is still alive and accepts a new session, so
