@@ -174,14 +174,12 @@ ref 绑定在 DOM 上。**页面一旦重新渲染**（React 刷新、翻页、A
 ## 工具速查
 
 **读**：`browser_snapshot`（第一步）· `browser_text` · `browser_tabs` · `browser_logs` · `browser_network` · `browser_screenshot` · `browser_evaluate` · `browser_detectability` · `browser_status`
-
 **动**：`browser_click` · `browser_type` · `browser_press_key` · `browser_select_option` · `browser_check` · `browser_hover` · `browser_scroll` · `browser_upload` · `browser_wait_for` · `browser_batch` · `browser_run_script` · `browser_handle_dialog`
-
 **Firefox 独有**：`browser_context` · `browser_extension` · `browser_cookie` · `browser_intercept`
-
 **验证码**：`browser_captcha` · `browser_captcha_status`（可选；不调用就完全不参与）
+**生命周期/历史/视口**：`browser_start` · `browser_stop` · `browser_status` · `browser_new_tab` · `browser_navigate` · `browser_close_tab` · `browser_back` · `browser_forward` · `browser_reload` · `browser_set_viewport` · `browser_config` · `browser_handoff`
 
-**生命周期**：`browser_start` · `browser_stop` · `browser_status` · `browser_new_tab` · `browser_navigate` · `browser_close_tab` · `browser_config` · `browser_handoff`
+**失败时读 `code`，别读 `error`。** 失败结果同时带 `code`（机器可读的固定词表，如 `ref_stale`、`confirm_required`、`invalid_argument`）和 `error`（给人看的原话）。分支请用 `code`。全部词表和每个工具的完整参数说明见 `REFERENCE.md`（同目录，需要时再读）。
 
 ## 用法要点与限制
 

@@ -8,6 +8,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { ERROR_CODES, classifyError, fail, ok } from '../lib/firefox/errors.js'
 import { capabilityError } from '../lib/firefox/capabilities.js'
 import { summarize } from '../lib/mcp/schema.js'
@@ -156,5 +157,31 @@ describe('summarize()', () => {
 
   test('a success is unaffected', () => {
     assert.equal(summarize({ ok: true, count: 3 }), 'count 3')
+  })
+})
+
+describe('the documented error vocabulary', () => {
+  test('the reference documents every code', () => {
+    // The agent reads the skill, not the source. If a code exists but is
+    // undocumented, the agent cannot branch on it — so the table in
+    // REFERENCE.md is checked against the table in the source.
+    const reference = readFileSync(
+      new URL('../skills/firefox-browser/REFERENCE.md', import.meta.url),
+      'utf8',
+    )
+    for (const code of Object.values(ERROR_CODES)) {
+      assert.ok(reference.includes(code), `the reference does not document the "${code}" code`)
+    }
+  })
+
+  test('the skill points at the reference', () => {
+    // SKILL.md stays inside its 200-line budget, so the detail lives next
+    // door. The guide has to say where.
+    const skill = readFileSync(
+      new URL('../skills/firefox-browser/SKILL.md', import.meta.url),
+      'utf8',
+    )
+    assert.match(skill, /REFERENCE\.md/)
+    assert.match(skill, /code/)
   })
 })

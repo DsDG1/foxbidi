@@ -120,7 +120,11 @@ describe('tool catalogue', () => {
     // The budget is the point of the test: every tool description is
     // injected into the model's context on every turn, so the total has to
     // stay bounded. The number is lowered as the descriptions are trimmed.
-    const TOOL_DESCRIPTION_BUDGET = 402
+    //
+    // The long-form explanation of each tool lives in
+    // skills/firefox-browser/SKILL.md, which is read on demand and therefore
+    // costs nothing per turn.
+    const TOOL_DESCRIPTION_BUDGET = 130
     for (const tool of tools) {
       assert.ok(
         tool.description.length <= TOOL_DESCRIPTION_BUDGET,
@@ -131,7 +135,7 @@ describe('tool catalogue', () => {
   })
 
   test('property descriptions stay within budget', () => {
-    const PROPERTY_DESCRIPTION_BUDGET = 204
+    const PROPERTY_DESCRIPTION_BUDGET = 70
     for (const tool of tools) {
       const props = tool.inputSchema.properties || {}
       for (const [key, spec] of Object.entries(props)) {
@@ -142,6 +146,34 @@ describe('tool catalogue', () => {
         )
       }
     }
+  })
+
+  test('the injected tool payload stays within budget', () => {
+    // This is the number that actually matters: the bytes the host puts into
+    // the model's context for the tool catalogue, on EVERY turn.
+    //
+    // It is measured on exactly the shape server.js sends for `tools/list`
+    // — name, description, inputSchema, outputSchema, annotations — so the
+    // budget cannot drift away from the real payload.
+    //
+    // History: 44128 bytes before the v2.3.0 trim (38 tools), 37925 bytes
+    // at v2.2.0 (34 tools). The floor for 38 tools with this parameter
+    // surface is ~30000, so this budget is deliberately set just above the
+    // trimmed size rather than at a round number that would invite another
+    // round of prose.
+    const TOOL_PAYLOAD_BUDGET = 34000
+    const payload = tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+      outputSchema: t.outputSchema,
+      annotations: t.annotations,
+    }))
+    const bytes = Buffer.byteLength(JSON.stringify(payload))
+    assert.ok(
+      bytes <= TOOL_PAYLOAD_BUDGET,
+      `the tool payload is ${bytes} bytes — over the ${TOOL_PAYLOAD_BUDGET} budget`,
+    )
   })
 
   test('the confirm gate is documented where it applies', () => {
