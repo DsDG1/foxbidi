@@ -29,6 +29,7 @@
 import { getFirefoxProvider, resetFirefoxProvider } from './lib/firefox/provider.js'
 import { createTools } from './lib/mcp/tools/index.js'
 import { toStructured, summarize, summarizeCaptcha, prettyJson } from './lib/mcp/schema.js'
+import { ERROR_CODES } from './lib/firefox/errors.js'
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -371,10 +372,23 @@ function toToolResult(result, tool) {
   }
 }
 
-function errorResult(text, tool) {
+/**
+ * Build a failure result for a call that never reached the provider.
+ *
+ * The `error` text stays exactly as it was — that is the human-readable
+ * contract. The `code` is added on top of it, so an agent can tell an
+ * unknown tool from a bad argument from a crashed tool without matching
+ * English.
+ *
+ * @param {string} text  the human-readable sentence
+ * @param {object|null} tool  the tool it was for (null when unknown)
+ * @param {string} code  one of ERROR_CODES
+ * @returns {object}
+ */
+function errorResult(text, tool, code) {
   return {
     content: [{ type: 'text', text }],
-    structuredContent: { ok: false, error: text },
+    structuredContent: { ok: false, code, error: text },
     isError: true,
   }
 }
@@ -382,16 +396,20 @@ function errorResult(text, tool) {
 async function callTool(name, args) {
   const tool = TOOLS_BY_NAME.get(name)
   if (!tool) {
-    return errorResult(`unknown tool "${name}"`, null)
+    return errorResult(`unknown tool "${name}"`, null, ERROR_CODES.UNKNOWN_TOOL)
   }
   const invalid = validateArgs(tool, args)
-  if (invalid) return errorResult(invalid, tool)
+  if (invalid) return errorResult(invalid, tool, ERROR_CODES.INVALID_ARGUMENT)
 
   let result
   try {
     result = await tool.run(args || {})
   } catch (e) {
-    return errorResult(`tool "${name}" failed: ${e && e.message ? e.message : String(e)}`, tool)
+    return errorResult(
+      `tool "${name}" failed: ${e && e.message ? e.message : String(e)}`,
+      tool,
+      ERROR_CODES.INTERNAL,
+    )
   }
 
   return toToolResult(result, tool)

@@ -249,6 +249,26 @@ describe('mcp stdio server', () => {
     assert.match(res.result.content[0].text, /unknown tool/i)
   })
 
+  test('a failure that never reached the provider still carries a code', async () => {
+    // The error contract says every failure has a machine-readable code.
+    // The three paths that fail BEFORE the provider runs are part of that
+    // contract, not an exception to it.
+    const unknown = await client.send('tools/call', {
+      name: 'browser_nonexistent',
+      arguments: {},
+    })
+    assert.equal(unknown.result.structuredContent.code, 'unknown_tool')
+    // The human-readable text is unchanged.
+    assert.match(unknown.result.structuredContent.error, /unknown tool/i)
+
+    const invalid = await client.send('tools/call', {
+      name: 'browser_click',
+      arguments: {},
+    })
+    assert.equal(invalid.result.structuredContent.code, 'invalid_argument')
+    assert.match(invalid.result.structuredContent.error, /missing required argument/i)
+  })
+
   test('missing required arguments are reported clearly', async () => {
     const res = await client.send('tools/call', {
       name: 'browser_click',
