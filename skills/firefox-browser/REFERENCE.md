@@ -61,6 +61,18 @@
 - `browser_run_script` — `path` 必须在 `~/.mavis/ff-workspace/` 内；`args` 会作为脚本的 `args` 参数传入。
 - `browser_handle_dialog` — `action` 为 `accept` / `dismiss` / `acceptWithText`（后者用 `text` 填入）。
 
+## 网络
+
+- `browser_net_check` — 页面打不开时先跑它。`target`（主机名或 URL，省略则用当前页）、`timeoutMs`（默认 8000）。
+  - 同时取两个样本：**本机**（能否解析、能否连通）与**浏览器**（能否加载），两者的差就是诊断。
+  - `diagnosis` 取值：`ok` / `dns_broken` / `firefox_egress_blocked` / `host_egress_blocked` / `inconclusive`。
+  - `host` 与 `browser` 两个对象带各段的原始事实；`hint` 是下一步该做什么；`suggestEgress` 为 true 时提示可以用 `browser_egress`。
+  - 探针页用完即关，**不留残留标签页**；不读页面内容，因此不受页面注入告警影响。
+- `browser_egress` — 本地出口代理（可选，默认关）。`action` 为 `start` / `stop` / `status`。
+  - `start` 会起一个监听 `127.0.0.1` 的转发代理，并把代理设置写进 profile 副本；**端口每次可能变，所以要 `browser_restart` 才生效**。
+  - 只连 80/443，**拒绝私网/回环/链路本地的目标**（按解析出来的地址判定，所以指向内网的名字也进不来）；不做 TLS 中间人；连接记审计，但只记主机、端口和字节数。
+  - 解析优先用系统解析器，失败再走 DoH（可用 `FIREFOX_BROWSER_DOH_URI` / `FIREFOX_BROWSER_DOH_BOOTSTRAP` 覆盖）。
+
 ## 生命周期与历史
 
 - `browser_start` — 幂等：实例已在跑就复用。首次启动要复制 profile 并等 BiDi 端点就绪。
@@ -69,6 +81,10 @@
 - `browser_back` / `browser_forward` — 走标签页历史（Firefox 122+）。到头会返回 `code: "invalid_argument"` 和一句提示，不是浏览器坏了。
 - `browser_reload` — 重载当前标签页（Firefox 119+）。
 - `browser_set_viewport` — `width` / `height`（CSS 像素）必填，`devicePixelRatio` 默认 1。用来测响应式布局而不改窗口大小；会重排页面，所以要 `confirm: true`（Firefox 117+）。
+- `browser_restart` — 重启 Firefox。写进 profile 副本的首选项**重启后才生效**，用这个让它们立刻起作用（不用重启 MCP 服务）。返回新的 `pid` / `port` / `sessionId`。
+- `browser_config` 的扩展参数：`prefs`（Firefox 首选项对象）、`applyNow`（是否立即作用于运行中的浏览器）、`timeoutMs`（单条命令超时，立即生效）、`restart`（改完是否重启）。
+  - 首选项**只写 profile 副本**，用户真实 profile 永不被改；首选项名会做白名单校验，值只收字符串/数字/布尔。
+  - `applyNow: true` 需要特权 Firefox（宿主以 `FIREFOX_BROWSER_PRIVILEGED=1` 启动）。没有特权时不报错，降级为「写副本 + 重启生效」，并在 `hint` 里说明。
 - `browser_config` — `preset`（`slim`/`basic`/`developer`/`all`）、`dialogPolicy`（`autoDismiss` 默认 / `autoAccept` / `manual`）、`maxSnapshotElements`（上限 5000）、`inlineSnapshot`（动作后是否附带精简元素列表，默认 `true`）。
 
 ## Firefox 独有
@@ -89,26 +105,31 @@
 失败时结果里同时有两个字段：`code` 是机器可读的固定词表，`error` 是给人看的原话。
 分支逻辑请用 `code`，给用户的解释请用 `error`。
 
-| code                     | 含义                                       |
-| ------------------------ | ------------------------------------------ |
-| `not_running`            | 浏览器没起来                               |
-| `no_context`             | 没有可用的标签页                           |
-| `element_not_found`      | 选择器/ref 没匹配到任何东西                |
-| `element_not_actionable` | 元素在，但用不了（隐藏、禁用、类型不对）   |
-| `ref_stale`              | 元素引用已过期，重新 `browser_snapshot`    |
-| `frame_gone`             | 目标 iframe 已经不在了                     |
-| `capability_unavailable` | 这版 Firefox 不支持该能力                  |
-| `confirm_required`       | 不可逆动作被拦下，需要 `confirm: true`     |
-| `invalid_argument`       | 参数不合法（包括历史到头）                 |
-| `timeout`                | 等待超时                                   |
-| `network_error`          | 请求本身失败                               |
-| `path_not_allowed`       | 文件路径不在允许的目录里                   |
-| `navigation_blocked`     | 这个 URL 不允许访问（私网地址、file: 等）  |
-| `injection_blocked`      | 页面藏了指令，数据外发动作被拦下           |
-| `evaluate_failed`        | 页面里的表达式抛异常或语法错了             |
-| `redacted_value`         | 目标是凭据字段，真值从不离开页面，无法比对 |
-| `unknown_tool`           | MCP 层被要求调用一个不存在的工具           |
-| `internal`               | 插件内部错误                               |
+| code                     | 含义                                          |
+| ------------------------ | --------------------------------------------- |
+| `not_running`            | 浏览器没起来                                  |
+| `no_context`             | 没有可用的标签页                              |
+| `element_not_found`      | 选择器/ref 没匹配到任何东西                   |
+| `element_not_actionable` | 元素在，但用不了（隐藏、禁用、类型不对）      |
+| `ref_stale`              | 元素引用已过期，重新 `browser_snapshot`       |
+| `frame_gone`             | 目标 iframe 已经不在了                        |
+| `capability_unavailable` | 这版 Firefox 不支持该能力                     |
+| `confirm_required`       | 不可逆动作被拦下，需要 `confirm: true`        |
+| `invalid_argument`       | 参数不合法（包括历史到头）                    |
+| `timeout`                | 等待超时                                      |
+| `network_error`          | 请求本身失败                                  |
+| `path_not_allowed`       | 文件路径不在允许的目录里                      |
+| `navigation_blocked`     | 这个 URL 不允许访问（私网地址、file: 等）     |
+| `injection_blocked`      | 页面藏了指令，数据外发动作被拦下              |
+| `evaluate_failed`        | 页面里的表达式抛异常或语法错了                |
+| `redacted_value`         | 目标是凭据字段，真值从不离开页面，无法比对    |
+| `unknown_tool`           | MCP 层被要求调用一个不存在的工具              |
+| `privileged_unavailable` | 这版 Firefox 没开系统访问，首选项不能即时生效 |
+| `prefs_write_failed`     | 首选项写不进 profile 副本                     |
+| `net_check_failed`       | 出网体检本身没能完成                          |
+| `egress_start_failed`    | 本地出口代理起不来                            |
+| `egress_resolve_failed`  | 系统解析器和 DoH 都解析不出这个域名           |
+| `internal`               | 插件内部错误                                  |
 
 `hint` 字段会说明下一步该做什么。
 

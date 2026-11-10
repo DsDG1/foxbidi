@@ -100,6 +100,56 @@ BiDi 命令超时——**但页面其实已经加载好了**。
 
 然后用 `browser_wait_for` 等你要的东西（`selector` / `text` / `networkIdle`）。
 
+## "浏览器能起来，但网页打不开"
+
+**先体检，别瞎试。** 同一条报错可能来自四种完全不同的原因，猜错就是白烧一轮：
+
+```jsonc
+{ "name": "browser_net_check", "arguments": { "target": "example.com" } }
+```
+
+它同时取两个样本——**本机**能不能解析并连通、**浏览器**能不能加载——两者的差就是诊断：
+
+| `diagnosis`              | 含义                                                              | 处理                                                      |
+| ------------------------ | ----------------------------------------------------------------- | --------------------------------------------------------- |
+| `ok`                     | 页面正常                                                          | 继续干活                                                  |
+| `dns_broken`             | **解析不了这个域名**（本机解析不出，或 Firefox 自己的解析器不出） | 解析的问题；或用 `browser_egress` 走 DoH                  |
+| `firefox_egress_blocked` | **本机通、浏览器不通**                                            | 浏览器进程出不了网 → `browser_egress` + `browser_restart` |
+| `host_egress_blocked`    | 本机也不通                                                        | 站点挂了或网络不通，跟浏览器无关                          |
+
+`browser_status` 的 `net.lastCheck` 会复述上一次的结论。
+
+浏览器的样本是**真的加载了一次页面**：Firefox 提交自己的错误页时，`location.href`
+仍然是请求的那个 URL，所以判定看的是 `document.documentURI` 与错误页上的
+`neterror` 标记——只看 URL 会把失败当成成功。
+
+本机通而浏览器不通时，出口代理是一条出路：
+
+```jsonc
+{ "name": "browser_egress", "arguments": { "action": "start" } }  // 起代理 + 写代理设置
+{ "name": "browser_restart", "arguments": {} }                    // 让浏览器读到新设置
+{ "name": "browser_navigate", "arguments": { "url": "https://example.com" } }
+```
+
+代理只监听 `127.0.0.1`，只连 80/443，拒绝私网目标，不做 TLS 中间人。**端口每次启动可能变**，所以 `start` 之后必须 `browser_restart`。
+
+## "插件工具没出现在会话里"
+
+**这通常不是插件坏了，是宿主没把工具绑上。** 插件自带一条不需要宿主注入的路：
+
+```bash
+node tools/ff-call.mjs --doctor
+node tools/ff-call.mjs browser_status '{}'
+```
+
+`--doctor` 会直接告诉你：宿主登记了多少个工具（并**点名**它和代码对不上的那些）、
+控制通道通不通、浏览器在不在、这台机器能不能出网。
+
+控制通道默认关闭，用 `FIREFOX_BROWSER_CONTROL_SOCKET=1` 启动服务即可打开。
+它和宿主走的是**同一个 provider**——同一个 Firefox、同一批标签页。
+
+`node tools/validate-package.mjs` 也会核对宿主的工具登记表，并把差异写成告警。
+
 ## "浏览器起不来"
 
 | 现象                                                       | 原因                      | 处理                                                   |
@@ -212,4 +262,7 @@ cookie 值就是会话凭据，默认不交给模型。
 
 // 有没有弹窗挂着
 { "name": "browser_status" }   // → pendingDialogs
+
+// 页面打不开时，一次分清 DNS / 本机 / 浏览器进程
+{ "name": "browser_net_check" }
 ```

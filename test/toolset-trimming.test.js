@@ -30,7 +30,7 @@ describe('toolset trimming', () => {
   })
 
   test('the all preset keeps every tool', () => {
-    assert.equal(presetTools('all', TOOL_ORDER).length, 40)
+    assert.equal(presetTools('all', TOOL_ORDER).length, 43)
   })
 
   test('the slim preset is smaller than the basic one', () => {
@@ -152,7 +152,7 @@ describe('the server tool list', () => {
       const reply = await waitFor(2)
       const tools = reply.result.tools
       assert.ok(tools.length > 0)
-      assert.ok(tools.length < 40, 'the list must be trimmed')
+      assert.ok(tools.length < 43, 'the list must be trimmed')
       assert.ok(
         tools.some((t) => t.name === 'browser_config'),
         'browser_config must always be reachable',
@@ -256,7 +256,7 @@ describe('the server tool list', () => {
       await waitFor(() => replies.has(4))
       const after = replies.get(4).result.tools.length
       assert.ok(after > before, `the list should grow: ${before} -> ${after}`)
-      assert.equal(after, 40)
+      assert.equal(after, 43)
     } finally {
       child.kill()
     }

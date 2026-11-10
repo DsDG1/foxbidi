@@ -13,6 +13,15 @@
 
 两种情况下 `capabilities.features` 的形状完全一样，Agent 不必分支处理。
 
+## 新增工具的能力依赖
+
+| 工具                        | 需要                                 | 缺了会怎样                                                     |
+| --------------------------- | ------------------------------------ | -------------------------------------------------------------- |
+| `browser_net_check`         | 无（纯 node API + BiDi）             | 永远可用；探针只是"本机能连 + 浏览器能加载"两个样本            |
+| `browser_restart`           | 无                                   | 永远可用；写进 profile 副本的首选项靠它才生效                  |
+| `browser_egress`            | 无（纯 node API）                    | 永远可用；代理自己解析、自己开连接                             |
+| `browser_config` 即时首选项 | FF + `--remote-enable-system-access` | 返回 `privileged_unavailable`，并**降级**为"写副本 + 重启生效" |
+
 ## 版本门槛
 
 | 能力                       | 需要                   | 对应 BiDi                                                                                                    | 缺了会怎样                                                                        |

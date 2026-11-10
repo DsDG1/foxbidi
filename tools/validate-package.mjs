@@ -9,12 +9,16 @@ import { execFileSync } from 'node:child_process'
 const ROOT = resolve(process.argv[2] || '.')
 const problems = []
 const notes = []
+const warnings = []
 
 function fail(msg) {
   problems.push(msg)
 }
 function ok(msg) {
   notes.push(msg)
+}
+function warn(msg) {
+  warnings.push(msg)
 }
 
 function readJson(rel) {
@@ -227,8 +231,56 @@ function checkPaths(dir) {
 }
 checkPaths(ROOT)
 
+// --- host compatibility ------------------------------------------------------
+//
+// The host loads a plugin through three shapes it expects to be exactly
+// right: the manifest at `.minimax-plugin/plugin.json`, an MCP config file
+// with the V1 wrapper, and a skill at `skills/<name>/SKILL.md` whose
+// frontmatter name matches the directory. A mistake in any of them does not
+// fail loudly — the plugin loads with no MCP servers and no skills, and the
+// agent finds an empty tool list.
+//
+// The last check is the one that cannot be seen from inside the package:
+// the host's own registry of this plugin's tools. When the registry is
+// older than the code, the host injects a tool list that no longer matches.
+try {
+  const { createTools } = await import('../lib/mcp/tools/index.js')
+  const catalogue = createTools({ provider: {} }).map((t) => t.name)
+  const registryPath = join(process.env.HOME || '', '.minimax', 'mcp-runtime-names.json')
+  if (existsSync(registryPath)) {
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8'))
+    const entry = (registry.servers || []).find((s) => s.raw === 'firefox-browser')
+    if (!entry) {
+      ok('host registry: this plugin is not registered with the host')
+    } else {
+      const registered = (entry.tools || []).map((t) => t.raw)
+      const missing = catalogue.filter((name) => !registered.includes(name))
+      const extra = registered.filter((name) => !catalogue.includes(name))
+      if (missing.length || extra.length) {
+        // A WARNING, not a failure: the package is valid, but the HOST has
+        // an older list of this plugin's tools, so it injects a catalogue
+        // that no longer matches the code.
+        warn(
+          'host registry: stale — the host knows ' +
+            `${registered.length} tools, the code has ${catalogue.length}` +
+            (missing.length ? `; missing: ${missing.join(', ')}` : '') +
+            (extra.length ? `; unknown: ${extra.join(', ')}` : ''),
+        )
+      } else {
+        ok(`host registry: in step (${registered.length} tools)`)
+      }
+    }
+  }
+} catch (e) {
+  ok(`host registry: not checked (${e.message})`)
+}
+
 console.log('checks passed:')
 for (const n of notes) console.log('  ✓', n)
+if (warnings.length) {
+  console.log('\nWARNINGS:')
+  for (const w of warnings) console.log('  ⚠', w)
+}
 if (problems.length) {
   console.log('\nPROBLEMS:')
   for (const p of problems) console.log('  ✗', p)

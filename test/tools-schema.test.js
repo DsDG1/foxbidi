@@ -68,6 +68,9 @@ const EXPECTED_ORDER = [
   'browser_set_viewport',
   'browser_verify',
   'browser_find',
+  'browser_net_check',
+  'browser_restart',
+  'browser_egress',
 ]
 
 describe('tool catalogue', () => {
@@ -188,7 +191,24 @@ describe('tool catalogue', () => {
     // The 2.7.0 work added `browser_find`, which paid for itself by
     // trimming the same way: the output-schema descriptions that restated
     // their own property names went away.
-    const TOOL_PAYLOAD_BUDGET = 34000
+    //
+    // The 2.8.0 work added THREE tools — `browser_net_check`,
+    // `browser_restart` and `browser_egress` — and paid for as much of
+    // them as prose could pay:
+    //
+    //   - the shared CONTEXT_SCHEMA, REF_SCHEMA and CONFIRM_SCHEMA
+    //     descriptions were shortened again (they are multiplied by 28, 8
+    //     and 10 tools);
+    //   - about twenty one-off property descriptions lost their examples
+    //     and restated their own names instead;
+    //   - the new tools declare no output properties they do not return.
+    //
+    // What is left is structural, not prose: three tools' JSON Schemas.
+    // The budget therefore moved up rather than down — the catalogue is
+    // 43 tools now, and the floor for 43 tools with this parameter
+    // surface is ~35500 bytes. The number is still a guard: it is a
+    // measured ceiling with a small margin, not a round number.
+    const TOOL_PAYLOAD_BUDGET = 36000
     const payload = tools.map((t) => ({
       name: t.name,
       description: t.description,
@@ -210,7 +230,8 @@ describe('tool catalogue', () => {
     // silent regression of the thing this feature exists to deliver.
     //
     // Measured at the time of writing: slim 17788 bytes, basic 28218.
-    const BUDGETS = { slim: 20000, basic: 29000 }
+    // Measured at the time of writing: slim 19197 bytes, basic 29203.
+    const BUDGETS = { slim: 20000, basic: 29500 }
     for (const [preset, budget] of Object.entries(BUDGETS)) {
       const names = new Set(presetTools(preset))
       const subset = tools.filter((t) => names.has(t.name))

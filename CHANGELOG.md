@@ -5,6 +5,86 @@ All notable changes to the `firefox-browser` plugin are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/), and
 versions follow `MAJOR.MINOR.PATCH`.
 
+## v2.8.0 — 2026-11-10
+
+把"AI 用不顺手"的三类障碍一次扫掉：接入、可观测、可配置。
+
+### Added
+
+- **`browser_net_check`** —— 页面打不开时的一次性体检。同一条报错可能来自四种完全
+  不同的原因（解析器坏、本机不通、**浏览器进程出不了网**、站点挂了），猜错就是白烧
+  一轮。它同时取两个样本：**本机**能不能解析并连通、**浏览器**能不能加载，两者的差
+  就是诊断。
+  - `diagnosis` 取值：`ok` / `dns_broken` / `firefox_egress_blocked` /
+    `host_egress_blocked` / `inconclusive`。**这是给人分支用的固定词表**。
+  - 探针页用完即关（失败路径也关），不留残留标签页；只取导航是否提交，不读页面
+    内容，因此不受页面注入告警影响。
+  - `browser_status` 会复述上一次的结论（`net.lastCheck`），不必重复体检。
+- **`browser_egress`** —— 可选的本地出口代理（**默认关**）。有些环境允许进程连
+  回环、却不允许连外网：浏览器进程被网络挡住，而本机没有。代理监听 `127.0.0.1`
+  ——那是浏览器还够得着的唯一出口——并自己解析域名、自己开连接。
+  - **不做 TLS 中间人**：HTTPS 走 CONNECT 隧道，端到端 TLS 仍在浏览器与站点之间。
+  - **只连 80/443**，并且**按解析出来的地址**判定私网——指向内网的名字同样进不来。
+  - 解析优先走系统解析器，失败再走 DoH（按字面 IP 直连，不依赖系统 DNS）。
+  - 连接记审计，但只记主机、端口与字节数，不留请求/响应内容。
+- **`browser_restart`** —— 重启 Firefox。写进 profile 副本的首选项**重启后才生效**，
+  这个工具让它们立刻起作用，agent 不必再去重启 MCP 服务。
+- **运行时首选项** —— `browser_config` 新增 `prefs` / `applyNow` / `timeoutMs` /
+  `restart`。首选项**只写 profile 副本**，用户真实 profile 永不被改；名字走白名单
+  校验，值只收字符串/数字/布尔。
+  - 两条生效路径：**写副本**（默认，下次启动生效）与**立即生效**（`applyNow`，走特权
+    上下文，需要宿主以 `FIREFOX_BROWSER_PRIVILEGED=1` 启动）。没有特权时**不报错**，
+    降级为写副本 + 重启生效。
+  - `timeoutMs` **立即生效**（30 秒写死的超时从此可改）。
+- **控制通道（降级入口）** —— `FIREFOX_BROWSER_CONTROL_SOCKET=1` 时，服务在插件数据
+  目录开一个 `control.sock`（0600），与宿主走**同一个 provider**：同一个 Firefox、
+  同一批标签页。配套 `tools/ff-call.mjs` 让 shell 直接调用工具，
+  `tools/ff-call.mjs --doctor` 一次性说清"哪里能用、哪里不能用"。
+  - 这条路是为**宿主没把工具注入会话**准备的：插件跑得好好的，只是没人接。
+- **宿主兼容性自检** —— `tools/validate-package.mjs` 现在会核对宿主的工具登记表
+  与插件代码是否一致，并**点名**双方各自多出/缺少哪些工具。
+
+### Changed
+
+- **网络类报错会指向体检** —— `NS_ERROR_UNKNOWN_HOST`、连接被拒、超时的 `hint`
+  现在直接说"跑 `browser_net_check`"，而不是只把 Firefox 的原话转述一遍。
+- **preset 成员** —— 新增能力 `egress`（`developer` 与 `all` 可见；`slim` 与
+  `basic` 不带它，因为代理是修复路径，不是日常路径）。
+  `browser_net_check` 与 `browser_restart` 归 `core`，**所有 preset 都能用**。
+- **注入体积预算** —— 三个新工具的 JSON Schema 是**结构**成本，省不掉；文案成本
+  按仓库的老办法自己买单：被乘 28 / 10 / 8 次的共享描述（`contextId` / `confirm` /
+  `ref`）缩短，约二十处一次性属性描述去掉赘词与例子。预算因此从 34000 调到
+  36000 字节（实测 35602），并把这一轮写进了测试注释里。
+
+### Fixed
+
+- **profile 副本的 `user.js` 会被每次启动覆盖** —— 于是运行时写的首选项在下次启动
+  时会消失。现在它们记在插件内存里，**每次拷贝之后重新写回副本**，并且
+  `user.js` 里插件自己的那一段是**托管区块**：重复写会替换而不是堆积。
+
+以下四条是**实机跑出来的**（在真实 Firefox 上过一遍 `browser_net_check` /
+`browser_config` / `browser_egress` / `browser_restart`），不是推测：
+
+- **浏览器加载失败会被误报成"页面正常"** —— Firefox 提交自己的错误页时，
+  `location.href` 仍然是**请求的那个 URL**，所以只看 URL 的话，探针会把
+  `about:neterror` 当成一次成功加载。判定改成看
+  `document.documentURI`（Firefox 140 是 `about:neterror?e=dnsNotFound&u=…`）
+  与 body 的 `neterror` class。症状是：一个根本不存在的域名，
+  `browser_net_check` 报 `ok`。
+- **浏览器自己的解析器失败时，诊断会说成"浏览器出不了网"** —— 现在浏览器报出
+  DNS 类错误码（`dnsNotFound` / `NS_ERROR_UNKNOWN_HOST`）时，结论是
+  `dns_broken` 而不是 `firefox_egress_blocked`：这是解析问题，而代理正是解药。
+- **`browser_config` 的 hint 会说谎** —— 只写副本（默认路径）时，它却说
+  "已应用到运行中的浏览器"。Firefox 启动时才读 `user.js`，所以没 `applyNow`
+  就**必须重启才生效**。hint 现在分三种情况说清楚。
+- **`browser_egress stop` 会挂死** —— `server.close()` 要等所有连接自己结束，
+  而浏览器把 keep-alive 连接握在手里，于是这个调用永远不返回（实测卡到
+  120 秒超时）。现在连接按"接入时"就被记录，停止时直接掐掉；实测从"卡死"
+  变成 **27 毫秒**。
+- **`ff-call.mjs` 打印完结果不退出** —— 打开的控制 socket 让 Node 的事件循环
+  一直活着，脚本会挂在那里不结束（能拿到输出，但没法用在脚本里）。
+  现在用完就关连接，命令正常返回。
+
 ## v2.7.0 — 2026-11-10
 
 新增 `browser_find`，并把 preset 的成员判定从"手写工具名名单"改成"按能力计算"。

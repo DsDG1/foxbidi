@@ -31,6 +31,10 @@ import { createTools, TOOL_ORDER } from './lib/mcp/tools/index.js'
 import { presetTools } from './lib/firefox/provider/workflow.js'
 import { toStructured, summarize, summarizeCaptcha, prettyJson } from './lib/mcp/schema.js'
 import { ERROR_CODES } from './lib/firefox/errors.js'
+import { defaultCopyBase } from './lib/firefox/provider/helpers.js'
+import net from 'node:net'
+import { chmodSync, mkdirSync, unlinkSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -84,7 +88,7 @@ const provider = getFirefoxProvider({
 // ---------------------------------------------------------------------------
 
 const SERVER_NAME = 'firefox-browser'
-const SERVER_VERSION = '2.7.0'
+const SERVER_VERSION = '2.8.0'
 const LATEST_PROTOCOL_VERSION = '2025-11-25'
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 
@@ -190,12 +194,30 @@ function write(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`)
 }
 
-function reply(id, result) {
-  write({ jsonrpc: '2.0', id, result })
+/**
+ * Send a reply to whoever asked.
+ *
+ * The stdio transport writes to stdout; the control socket writes to the
+ * connection the request came in on. The sink is passed explicitly so the
+ * two transports cannot step on each other when both are in use — a reply
+ * to the socket must never land on the host's stdout, and vice versa.
+ *
+ * @param {number|string} id
+ * @param {object} result
+ * @param {(message: object) => void} [sink]
+ */
+function reply(id, result, sink = write) {
+  sink({ jsonrpc: '2.0', id, result })
 }
 
-function replyError(id, code, message) {
-  write({ jsonrpc: '2.0', id, error: { code, message } })
+/**
+ * @param {number|string} id
+ * @param {number} code
+ * @param {string} message
+ * @param {(message: object) => void} [sink]
+ */
+function replyError(id, code, message, sink = write) {
+  sink({ jsonrpc: '2.0', id, error: { code, message } })
 }
 
 /**
@@ -452,7 +474,7 @@ async function callTool(name, args) {
   return toToolResult(result, tool)
 }
 
-async function handleMessage(message) {
+async function handleMessage(message, sink = write) {
   const { id, method, params } = message
 
   // Notifications carry no id and get no reply.
@@ -469,41 +491,49 @@ async function handleMessage(message) {
       const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
         ? requested
         : LATEST_PROTOCOL_VERSION
-      reply(id, {
-        protocolVersion,
-        capabilities: { tools: { listChanged: true } },
-        serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-        instructions: INSTRUCTIONS,
-      })
+      reply(
+        id,
+        {
+          protocolVersion,
+          capabilities: { tools: { listChanged: true } },
+          serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+          instructions: INSTRUCTIONS,
+        },
+        sink,
+      )
       return
     }
     case 'ping':
-      reply(id, {})
+      reply(id, {}, sink)
       return
     case 'tools/list': {
       // The catalogue is trimmed to the current preset. `browser_config`
       // is always in the list, so the agent can widen it again.
       const names = new Set(presetTools(provider.config_.preset, TOOL_ORDER))
       const visible = TOOLS.filter((t) => names.has(t.name))
-      reply(id, {
-        tools: visible.map((t) => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema,
-          outputSchema: t.outputSchema,
-          annotations: t.annotations,
-        })),
-      })
+      reply(
+        id,
+        {
+          tools: visible.map((t) => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: t.inputSchema,
+            outputSchema: t.outputSchema,
+            annotations: t.annotations,
+          })),
+        },
+        sink,
+      )
       return
     }
     case 'tools/call': {
       const name = params && params.name
       const args = params && params.arguments
-      reply(id, await callTool(name, args))
+      reply(id, await callTool(name, args), sink)
       return
     }
     default:
-      replyError(id, -32601, `method not found: ${method}`)
+      replyError(id, -32601, `method not found: ${method}`, sink)
   }
 }
 
@@ -543,6 +573,102 @@ process.stdin.on('end', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Control socket (optional)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the control socket lives.
+ *
+ * It sits next to the profile copies — the plugin's own data directory,
+ * which is outside the package. The path is stable, so a caller can find
+ * it without being told.
+ *
+ * @returns {string}
+ */
+export function controlSocketPath() {
+  return join(provider.opts.copyBaseDir || defaultCopyBase(), 'control.sock')
+}
+
+/**
+ * Start the control socket.
+ *
+ * WHY IT EXISTS
+ *
+ * The plugin's tools reach the agent through the host, which injects them
+ * as MCP tools. When that injection does not happen — a host-side
+ * problem, or a client that does not speak MCP — the plugin would be
+ * unreachable even though it is running perfectly well.
+ *
+ * This socket is the way out: it speaks the same JSON-RPC over the same
+ * provider, so a caller can drive the very same browser from a shell.
+ * It is OFF unless FIREFOX_BROWSER_CONTROL_SOCKET=1.
+ */
+function startControlSocket() {
+  if (String(process.env.FIREFOX_BROWSER_CONTROL_SOCKET || '') !== '1') return null
+  const path = controlSocketPath()
+  let server
+  try {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+    // A stale socket from a crashed server would make listen() fail.
+    try {
+      unlinkSync(path)
+    } catch {
+      /* there was none */
+    }
+    server = net.createServer((socket) => {
+      let buffer = ''
+      socket.setEncoding('utf8')
+      const sink = (payload) => {
+        try {
+          socket.write(`${JSON.stringify(payload)}\n`)
+        } catch {
+          /* the client went away */
+        }
+      }
+      socket.on('data', (chunk) => {
+        buffer += chunk
+        let index
+        while ((index = buffer.indexOf('\n')) !== -1) {
+          const line = buffer.slice(0, index).trim()
+          buffer = buffer.slice(index + 1)
+          if (!line) continue
+          let message
+          try {
+            message = JSON.parse(line)
+          } catch (e) {
+            log(`control socket: ignoring unparseable line: ${e.message}`)
+            continue
+          }
+          Promise.resolve(handleMessage(message, sink)).catch((err) => {
+            log(`control socket handler error: ${err && err.stack ? err.stack : err}`)
+          })
+        }
+      })
+      socket.on('error', () => {
+        /* the client went away */
+      })
+    })
+    server.listen(path, () => {
+      try {
+        chmodSync(path, 0o600)
+      } catch {
+        /* best effort */
+      }
+      log(`control socket listening on ${path}`)
+    })
+    server.on('error', (e) => {
+      log(`control socket failed: ${e && e.message ? e.message : e}`)
+    })
+  } catch (e) {
+    log(`control socket not started: ${e && e.message ? e.message : e}`)
+    server = null
+  }
+  return server
+}
+
+const controlServer = startControlSocket()
+
+// ---------------------------------------------------------------------------
 // Shutdown
 // ---------------------------------------------------------------------------
 
@@ -552,6 +678,14 @@ async function shutdown(reason) {
   if (shuttingDown) return
   shuttingDown = true
   log(`shutting down (${reason})`)
+  if (controlServer) {
+    try {
+      controlServer.close()
+      unlinkSync(controlSocketPath())
+    } catch {
+      /* best effort */
+    }
+  }
   try {
     await provider.stop()
   } catch (e) {

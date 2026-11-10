@@ -157,6 +157,33 @@ firefox-browser/
 Point MiniMax Code at `~/.minimax/plugins/firefox-browser/` and the MCP tools
 appear alongside your other plugin tools.
 
+## Getting in: when the host does not inject the tools
+
+The plugin's tools normally reach the agent through the host, which injects
+them as MCP tools. When that injection does not happen, the plugin is
+running perfectly well and is still unreachable — which is a confusing
+place to be standing.
+
+So the plugin ships its own way in:
+
+```bash
+node tools/ff-call.mjs --doctor              # what works, what does not
+node tools/ff-call.mjs browser_status '{}'   # call a tool
+node tools/ff-call.mjs --spawn browser_status '{}'   # start a server and call it
+```
+
+`--doctor` reports four things: the host's own registry of this plugin's
+tools (and whether it is stale), the control socket, the browser, and
+whether this machine can resolve and reach the outside world at all.
+
+The control socket is off by default. With `FIREFOX_BROWSER_CONTROL_SOCKET=1`
+the server also listens on `control.sock` (0600) in the plugin data
+directory, speaking the same JSON-RPC to the **same provider** — the same
+Firefox, the same tabs.
+
+`tools/validate-package.mjs` checks the same registry and names the tools
+each side is missing.
+
 ## The agent loop
 
 The plugin is designed around the way an agent actually drives a browser:
@@ -219,6 +246,13 @@ fingerprint actually changed. A command that ran without effect is reported as
 
 Every tool declares an `outputSchema` and returns matching `structuredContent`,
 so a host can consume the result as data rather than parsing prose.
+
+### Network
+
+| Tool                | What it is for                                                                                                                                                                                                                               |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `browser_net_check` | Find out **why** a page will not load: DNS, the machine's route, the browser process's egress, or the site. Takes one sample from the host and one from the browser; the difference is the diagnosis. The probe tab is closed on every path. |
+| `browser_egress`    | An optional forward proxy on the loopback interface, for a browser that cannot open outbound sockets. Off by default. Refuses private targets and non-web ports, does not decrypt TLS, and audits connections without recording content.     |
 
 ### Lifecycle
 
