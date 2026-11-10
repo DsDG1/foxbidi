@@ -246,6 +246,7 @@ so a host can consume the result as data rather than parsing prose.
 | `browser_screenshot` | `contextId?`, `fullPage?`, `elementRef?`                                                           | PNG screenshot, delivered as an MCP image block plus an `imageUrl` (see below).                                        |
 | `browser_logs`       | `limit?`, `levels?`, `channel?`, `filter?`                                                         | Buffered logs, split into `console` (the page), `plugin` (what the plugin did) and `bidi` (a command Firefox refused). |
 | `browser_network`    | `limit?`, `status?`, `types?`, `filter?`, `requestId?`                                             | Captured requests. URLs never carry a query string. `requestId` also fetches the response body (Firefox 144+).         |
+| `browser_verify`     | `kind`, `role?`, `name?`, `text?`, `ref?` / `selector?`, `value?`, `items?`, `contextId?`          | Assert something about the page and get a verdict. `kind` is `element`, `text`, `value` or `list`.                     |
 
 ### Actions
 
@@ -264,6 +265,18 @@ both are given, the ref wins and the result says so.
 | `browser_upload`        | `ref?` / `selector?`, `paths`, `confirm?`                        | Attach local files to a file input.                                                                                                           |
 | `browser_wait_for`      | `for?`, `selector?`, `text?`, `timeoutMs?`                       | Wait for a selector, text, load, or network idle.                                                                                             |
 | `browser_set_viewport`  | `width`, `height`, `devicePixelRatio?`, `contextId?`, `confirm?` | Override the viewport to test a responsive layout without resizing the window. Firefox 117+. Confirmation required — it re-lays-out the page. |
+
+**An action's response already carries a look at the page.** Alongside
+`effect.verified` (did the action land?), the action returns
+`effect.snapshot` — the elements as they are NOW, each with just `ref`,
+`role` and `name`, capped at 60. So "click, then see what changed" costs
+one round trip instead of two.
+
+It is deliberately light and read-only: it does not consume a snapshot id,
+does not disturb the `since`/`delta` baseline, and carries no geometry and
+no field values. When the page refuses the script the **action still
+succeeds** — the reason lands in `effect.snapshotError`. Turn it off with
+`browser_config({inlineSnapshot: false})`.
 
 The browser starts on demand — the first tool call launches it, so there is no
 separate launch step.
@@ -298,15 +311,24 @@ exactly the shape the server sends for `tools/list`:
 | v2.2.0 (34 tools)                 | 37925     | 1115     |
 | v2.3.0 before the trim (38 tools) | 44128     | 1161     |
 | v2.3.0 after the trim (38 tools)  | 33380     | 879      |
-| v2.5.0 slim preset (22 tools)     | **18774** | **854**  |
-| v2.5.0 basic preset (32 tools)    | **27621** | **863**  |
-| v2.5.0 full catalogue (38 tools)  | 33672     | 886      |
+| v2.5.0 full catalogue (38 tools)  | 33879     | 891      |
+| v2.6.0 slim preset (22 tools)     | **17922** | **815**  |
+| v2.6.0 basic preset (32 tools)    | **27422** | **857**  |
+| v2.6.0 full catalogue (39 tools)  | **33167** | **850**  |
 
 The trim cut the tool descriptions to one short clause each, shortened the
 shared schema fragments (one of which is copied into 27 tools, so its wording is
 multiplied by 27), and made the output-schema property descriptions optional.
 Tool names, parameters, types and order did not change — only prose moved, and
 it moved into the skill's reference file, which is read on demand.
+
+v2.6.0 added `browser_verify` and the inline snapshot to a catalogue that had
+only **121 bytes** of headroom left under the 34000-byte budget. Three rounds of
+trimming paid for it: the shared `CONTEXT_SCHEMA` and `REF_SCHEMA` descriptions
+were shortened, the `code` output property lost the description it repeated in
+every tool ("Failure code when ok is false."), and the inline snapshot became a
+**session** switch rather than a parameter on each of the eight action tools —
+which would have cost 776 bytes for a flag nobody changes between calls.
 
 **The catalogue is now trimmed to the active preset.** `tools/list` returns
 only the tools the current preset exposes, and the server tells the host when

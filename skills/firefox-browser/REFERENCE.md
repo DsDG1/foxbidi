@@ -20,8 +20,27 @@
 - `browser_logs` — `channel`（`console` / `plugin` / `bidi` / `all`）、`levels`、`filter`、`limit`。
 - `browser_evaluate` — `expression` 在页面上下文执行，返回其值。`confirm`（页面带隐藏注入时必需）。返回值有上限（默认 8192 字符），超限返回 `truncated: true`；页面侧抛异常返回 `code: "evaluate_failed"`。
 - `browser_screenshot` — `fullPage`（整篇文档而不是视口）、`elementRef`（只截某个快照 ref）。
+- `browser_verify` — 对页面做断言，拿结论。`kind` 必填：
+  - `kind: "element"` — 存在某个 role + 无障碍名的元素。给 `role`（如 `"button"`）和/或 `name`。名字先精确匹配、再包含匹配，大小写不敏感。命中返回 `verified: true` 和该元素的 `ref`。
+  - `kind: "text"` — 可见文本里有这段字。`text` 必填。大小写不敏感。页面可见文本**先脱敏再读**，所以拿真验证码去断言必然失败（`hint` 会说明）。
+  - `kind: "value"` — 目标元素的值等于期望值。需要 `ref` 或 `selector`，外加 `value`。
+  - `kind: "list"` — 目标元素里包含这些条目。需要 `ref` 或 `selector`，外加 `items` 数组。返回 `matched`（命中的）和 `missing`（没命中的）分开列。
+  - **凭据字段拒绝比对**：目标是密码、验证码、卡号一类字段时返回 `code: "redacted_value"`。这不是策略上的拒绝——那些字段的真值**从来没有离开过页面**（页面侧脚本返回空串），插件手里根本没有可比对的东西。
+  - **`kind: "text"` 的查找范围**：先查快照的文本块（只含 `p` / `li` / 标题 / 表格单元格这类**块级**元素），再查元素的无障碍名，最后查整页可见文本。所以把文字放在 `<div>` 里的页面也能断言到。
+  - **`ok` 与 `verified` 是两回事**：`ok: true` + `verified: false` 表示断言跑了但没成立（换个思路，别重复调用）；`ok: false` 表示断言压根没跑起来（参数不对、页面不可达、目标不存在）。
+  - `kind: "element"` 只能在**交互元素**里找（按钮、链接、表单控件、显式 `role` 的元素）。纯文本段落（`<p>`）不在快照候选集里，断言不到。
 
 ## 动作
+
+动作类工具（`browser_click` / `browser_type` / `browser_press_key` / `browser_select_option` / `browser_check` / `browser_hover` / `browser_scroll` / `browser_upload`）的响应里带 `effect`，其中：
+
+- `effect.verified` — 动作到底有没有生效（比对动作前后的页面状态）。
+- `effect.snapshot` — **动作之后**页面上的一批元素，每条只有 `ref` / `role` / `name` 三项，最多 60 条。这是"顺带看一眼"，让 agent 不用再单独调一次 `browser_snapshot` 才知道页变成什么样了。
+  - 里面的 `ref` 是**当下最新**的；但页面之后若重渲染，ref 照样会失效（工具会回 `requiresResnapshot: true`）。
+  - 需要坐标、当前值、完整列表时，仍然调 `browser_snapshot`。
+- `effect.dialog` — 动作触发的 JavaScript 弹窗（插件按 `dialogPolicy` 处理，默认自动关掉）。
+
+**关掉内联快照**：`browser_config { inlineSnapshot: false }`（会话级，默认开）。页面很大、这些元素是噪音时关掉。
 
 - `browser_click` — `button`（0 左键 / 1 中键 / 2 右键）、`clickCount`（双击填 2）。
 - `browser_type` — `text` 必填；`clear` 先清空；`submit` 打完回车（可能提交表单，要 `confirm`）。
@@ -44,7 +63,7 @@
 - `browser_back` / `browser_forward` — 走标签页历史（Firefox 122+）。到头会返回 `code: "invalid_argument"` 和一句提示，不是浏览器坏了。
 - `browser_reload` — 重载当前标签页（Firefox 119+）。
 - `browser_set_viewport` — `width` / `height`（CSS 像素）必填，`devicePixelRatio` 默认 1。用来测响应式布局而不改窗口大小；会重排页面，所以要 `confirm: true`（Firefox 117+）。
-- `browser_config` — `preset`（`slim`/`basic`/`developer`/`all`）、`dialogPolicy`（`autoDismiss` 默认 / `autoAccept` / `manual`）、`maxSnapshotElements`（上限 5000）。
+- `browser_config` — `preset`（`slim`/`basic`/`developer`/`all`）、`dialogPolicy`（`autoDismiss` 默认 / `autoAccept` / `manual`）、`maxSnapshotElements`（上限 5000）、`inlineSnapshot`（动作后是否附带精简元素列表，默认 `true`）。
 
 ## Firefox 独有
 
@@ -64,25 +83,26 @@
 失败时结果里同时有两个字段：`code` 是机器可读的固定词表，`error` 是给人看的原话。
 分支逻辑请用 `code`，给用户的解释请用 `error`。
 
-| code                     | 含义                                      |
-| ------------------------ | ----------------------------------------- |
-| `not_running`            | 浏览器没起来                              |
-| `no_context`             | 没有可用的标签页                          |
-| `element_not_found`      | 选择器/ref 没匹配到任何东西               |
-| `element_not_actionable` | 元素在，但用不了（隐藏、禁用、类型不对）  |
-| `ref_stale`              | 元素引用已过期，重新 `browser_snapshot`   |
-| `frame_gone`             | 目标 iframe 已经不在了                    |
-| `capability_unavailable` | 这版 Firefox 不支持该能力                 |
-| `confirm_required`       | 不可逆动作被拦下，需要 `confirm: true`    |
-| `invalid_argument`       | 参数不合法（包括历史到头）                |
-| `timeout`                | 等待超时                                  |
-| `network_error`          | 请求本身失败                              |
-| `path_not_allowed`       | 文件路径不在允许的目录里                  |
-| `navigation_blocked`     | 这个 URL 不允许访问（私网地址、file: 等） |
-| `injection_blocked`      | 页面藏了指令，数据外发动作被拦下          |
-| `evaluate_failed`        | 页面里的表达式抛异常或语法错了            |
-| `unknown_tool`           | MCP 层被要求调用一个不存在的工具          |
-| `internal`               | 插件内部错误                              |
+| code                     | 含义                                       |
+| ------------------------ | ------------------------------------------ |
+| `not_running`            | 浏览器没起来                               |
+| `no_context`             | 没有可用的标签页                           |
+| `element_not_found`      | 选择器/ref 没匹配到任何东西                |
+| `element_not_actionable` | 元素在，但用不了（隐藏、禁用、类型不对）   |
+| `ref_stale`              | 元素引用已过期，重新 `browser_snapshot`    |
+| `frame_gone`             | 目标 iframe 已经不在了                     |
+| `capability_unavailable` | 这版 Firefox 不支持该能力                  |
+| `confirm_required`       | 不可逆动作被拦下，需要 `confirm: true`     |
+| `invalid_argument`       | 参数不合法（包括历史到头）                 |
+| `timeout`                | 等待超时                                   |
+| `network_error`          | 请求本身失败                               |
+| `path_not_allowed`       | 文件路径不在允许的目录里                   |
+| `navigation_blocked`     | 这个 URL 不允许访问（私网地址、file: 等）  |
+| `injection_blocked`      | 页面藏了指令，数据外发动作被拦下           |
+| `evaluate_failed`        | 页面里的表达式抛异常或语法错了             |
+| `redacted_value`         | 目标是凭据字段，真值从不离开页面，无法比对 |
+| `unknown_tool`           | MCP 层被要求调用一个不存在的工具           |
+| `internal`               | 插件内部错误                               |
 
 `hint` 字段会说明下一步该做什么。
 

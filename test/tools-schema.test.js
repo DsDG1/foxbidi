@@ -66,6 +66,7 @@ const EXPECTED_ORDER = [
   'browser_forward',
   'browser_reload',
   'browser_set_viewport',
+  'browser_verify',
 ]
 
 describe('tool catalogue', () => {
@@ -167,6 +168,21 @@ describe('tool catalogue', () => {
     // three `confirm` flags on the newly gated actions), which cost 215
     // bytes. The shared CONFIRM_SCHEMA description was shortened to pay for
     // most of it — it is multiplied by every tool carrying the flag.
+    //
+    // The 2.6.0 work added `browser_verify` and the inline snapshot. It also
+    // found the catalogue sitting at 33879 bytes against this 34000 budget —
+    // 121 bytes of headroom, which no new tool could have fit into. Three
+    // rounds of trimming paid for it:
+    //
+    //   - the shared CONTEXT_SCHEMA and REF_SCHEMA descriptions were
+    //     shortened (they are multiplied by 27 and 8 tools);
+    //   - the `code` property lost its description in every output schema
+    //     ("Failure code when ok is false." was repeated 39 times over);
+    //   - the inline snapshot is a SESSION switch (browser_config), not a
+    //     parameter on each of the eight action tools, which would have cost
+    //     776 bytes for a flag nobody changes between calls.
+    //
+    // Measured after all of that: 33167 bytes for the full catalogue.
     const TOOL_PAYLOAD_BUDGET = 34000
     const payload = tools.map((t) => ({
       name: t.name,
@@ -188,7 +204,7 @@ describe('tool catalogue', () => {
     // point: a preset that grew back to the full catalogue would be a
     // silent regression of the thing this feature exists to deliver.
     //
-    // Measured at the time of writing: slim 18774 bytes, basic 27621.
+    // Measured at the time of writing: slim 17922 bytes, basic 27422.
     const BUDGETS = { slim: 20000, basic: 29000 }
     for (const [preset, budget] of Object.entries(BUDGETS)) {
       const names = new Set(presetTools(preset))

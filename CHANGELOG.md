@@ -5,6 +5,41 @@ All notable changes to the `firefox-browser` plugin are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/), and
 versions follow `MAJOR.MINOR.PATCH`.
 
+## v2.6.0 — 2026-11-10
+
+动作响应自带精简元素列表、新增 `browser_verify` 断言工具。
+从 `microsoft/playwright-mcp` 的会话契约层提炼的两项能力。
+
+### Added
+
+- **动作响应内联快照** —— `browser_click` / `browser_type` / `browser_press_key` /
+  `browser_select_option` / `browser_check` / `browser_hover` / `browser_scroll` /
+  `browser_upload` 的响应现在带 `effect.snapshot`：动作**之后**页面上的元素，
+  每条只有 `ref` / `role` / `name`，最多 60 条。动作改变页面之后，Agent 的下一个
+  问题几乎总是"现在长什么样"——以前要再发一次 `browser_snapshot`，现在一次往返
+  就同时拿到"动作生效没有"（`effect.verified`）和"页面现在什么样"。
+  - 它是**轻量且只读**的：不递增快照序号、不覆盖 `since`/`delta` 的基准、
+    不产出 `snapshotId`、不带 `rect` / `value`（凭据的值本来就不出页面）。
+  - 页面拒绝脚本执行时**动作仍然成功**，失败原因放在 `effect.snapshotError`。
+  - 用 `browser_config({inlineSnapshot: false})` 关掉（会话级）。
+- **`browser_verify` 断言工具** —— `kind` 取 `element` / `text` / `value` / `list`，
+  返回结论而不是原始数据。`ok` 表示断言**能不能跑**，`verified` 表示断言**成不成立**——
+  两者分开，Agent 才能区分"断言失败"和"工具出错"。
+  - 凭据字段（密码、验证码、卡号）返回 `code: "redacted_value"`：那些字段的真值
+    **从来没有离开过页面**，插件手里没有可比对的东西，所以拒绝比对而不是给一个
+    假的空值。
+  - `kind: "text"` 依次查快照的块级文本块、元素无障碍名、整页可见文本——所以把
+    文字放在 `<div>` 里的页面也断言得到。
+  - `kind: "element"` 只能在交互元素里找（快照候选集只含交互元素与显式 `role`
+    的元素），纯文本段落断言不到——这是既有快照语义的限制。
+
+### Changed
+
+- **工具目录瘦身**：共享的 `CONTEXT_SCHEMA` / `REF_SCHEMA` 描述收短，
+  输出 schema 里的 `code` 属性不再带描述（"Failure code when ok is false."
+  原本在每个工具里重复一遍）。这两项为新功能腾出空间——工具 payload 从
+  33879 字节（预算 34000，余量只有 121 字节）降到 33167 字节。
+
 ## v2.5.0 — 2026-11-10
 
 提示词注入防护（分层）、两个既有缺陷修复、工具目录按 preset 裁剪。
