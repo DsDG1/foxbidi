@@ -3,3 +3,5 @@ package-lock.json
 coverage/
 *.log
 .DS_Store
+.worktrees/
+.plugin-data/
