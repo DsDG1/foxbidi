@@ -28,6 +28,7 @@
 
 import { getFirefoxProvider, resetFirefoxProvider } from './lib/firefox/provider.js'
 import { createTools } from './lib/mcp/tools/index.js'
+import { presetTools } from './lib/firefox/provider/workflow.js'
 import { toStructured, summarize, summarizeCaptcha, prettyJson } from './lib/mcp/schema.js'
 import { ERROR_CODES } from './lib/firefox/errors.js'
 
@@ -135,7 +136,16 @@ const INSTRUCTIONS = [
 // list order is fixed there and must not change: the host injects the tool
 // schemas in the order the server returns them, and that order is part of
 // the prompt cache.
-const TOOLS = createTools({ provider })
+//
+// The catalogue is TRIMMED to the active preset when it is listed. The
+// host re-reads it whenever the preset changes, so the trimmed list is
+// what the agent actually carries in its context.
+const TOOLS = createTools({
+  provider,
+  onToolsetChanged: () => {
+    notify('notifications/tools/list_changed')
+  },
+})
 const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]))
 
 /**
@@ -181,6 +191,19 @@ function reply(id, result) {
 
 function replyError(id, code, message) {
   write({ jsonrpc: '2.0', id, error: { code, message } })
+}
+
+/**
+ * Send a notification to the host.
+ *
+ * Notifications carry no id and get no reply — see the `handleMessage`
+ * switch, which ignores any message without an id.
+ *
+ * @param {string} method
+ * @param {object} [params]
+ */
+function notify(method, params = {}) {
+  write({ jsonrpc: '2.0', method, params })
 }
 
 /**
@@ -443,7 +466,7 @@ async function handleMessage(message) {
         : LATEST_PROTOCOL_VERSION
       reply(id, {
         protocolVersion,
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: { listChanged: true } },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         instructions: INSTRUCTIONS,
       })
@@ -452,9 +475,13 @@ async function handleMessage(message) {
     case 'ping':
       reply(id, {})
       return
-    case 'tools/list':
+    case 'tools/list': {
+      // The catalogue is trimmed to the current preset. `browser_config`
+      // is always in the list, so the agent can widen it again.
+      const names = new Set(presetTools(provider.config_.preset))
+      const visible = TOOLS.filter((t) => names.has(t.name))
       reply(id, {
-        tools: TOOLS.map((t) => ({
+        tools: visible.map((t) => ({
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
@@ -463,6 +490,7 @@ async function handleMessage(message) {
         })),
       })
       return
+    }
     case 'tools/call': {
       const name = params && params.name
       const args = params && params.arguments
@@ -543,5 +571,6 @@ process.on('exit', () => {
 
 log(
   `ready — firefox=${FIREFOX_BROWSER_BIN || '(auto)'} port=${FIREFOX_BROWSER_PORT} ` +
-    `headless=${FIREFOX_BROWSER_HEADLESS} tools=${TOOLS.length}`,
+    `headless=${FIREFOX_BROWSER_HEADLESS} tools=${TOOLS.length} ` +
+    `preset=${provider.config_.preset} visible=${presetTools(provider.config_.preset).length}`,
 )

@@ -13,6 +13,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createTools, TOOL_ORDER } from '../lib/mcp/tools/index.js'
+import { presetTools } from '../lib/firefox/provider/workflow.js'
 
 const fakeProvider = new Proxy(
   {},
@@ -179,6 +180,35 @@ describe('tool catalogue', () => {
       bytes <= TOOL_PAYLOAD_BUDGET,
       `the tool payload is ${bytes} bytes — over the ${TOOL_PAYLOAD_BUDGET} budget`,
     )
+  })
+
+  test('the trimmed presets stay within their own budgets', () => {
+    // The full-catalogue budget above guards the TOTAL. These guard the
+    // lists the agent actually carries, because the trimming is the whole
+    // point: a preset that grew back to the full catalogue would be a
+    // silent regression of the thing this feature exists to deliver.
+    //
+    // Measured at the time of writing: slim 18774 bytes, basic 27621.
+    const BUDGETS = { slim: 20000, basic: 29000 }
+    for (const [preset, budget] of Object.entries(BUDGETS)) {
+      const names = new Set(presetTools(preset))
+      const subset = tools.filter((t) => names.has(t.name))
+      const bytes = Buffer.byteLength(
+        JSON.stringify(
+          subset.map((t) => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: t.inputSchema,
+            outputSchema: t.outputSchema,
+            annotations: t.annotations,
+          })),
+        ),
+      )
+      assert.ok(
+        bytes < budget,
+        `the ${preset} preset is ${bytes} bytes — over the ${budget} budget`,
+      )
+    }
   })
 
   test('the confirm gate is documented where it applies', () => {
