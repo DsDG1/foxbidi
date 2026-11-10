@@ -1,0 +1,12 @@
+{
+  "description": "用 WebDriver BiDi 驱动真实 Firefox 的 MCP server：复用你的登录态、真人级指针输入、容器多身份、扩展管理。为 MiniMax Code 而作，兼容 Claude Code / Cursor。",
+  "topics": [
+    "mcp",
+    "firefox",
+    "webdriver-bidi",
+    "browser-automation",
+    "minimax-code",
+    "model-context-protocol",
+    "agent-tools"
+  ]
+}

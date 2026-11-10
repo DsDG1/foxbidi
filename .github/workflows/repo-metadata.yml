@@ -1,0 +1,44 @@
+# Keep the repository metadata in sync with .github/repo-metadata.json.
+#
+# The canonical values live in the repository, so the description and the
+# topics are reviewable in a pull request instead of being edited by hand
+# on the GitHub settings page.
+#
+# This workflow uses GITHUB_TOKEN, so it needs no secret of its own.
+
+name: repo-metadata
+
+on:
+  push:
+    paths:
+      - .github/repo-metadata.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  metadata: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Read the metadata
+        id: meta
+        run: |
+          description=$(jq -r '.description' .github/repo-metadata.json)
+          topics=$(jq -c '.topics' .github/repo-metadata.json)
+          echo "description=${description}" >> "$GITHUB_OUTPUT"
+          echo "topics=${topics}" >> "$GITHUB_OUTPUT"
+
+      - name: Apply it to the repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESCRIPTION: ${{ steps.meta.outputs.description }}
+          TOPICS: ${{ steps.meta.outputs.topics }}
+        run: |
+          jq -n --arg d "$DESCRIPTION" --argjson t "$TOPICS" \
+            '{description: $d, topics: $t}' | \
+            gh api --method PATCH "repos/${{ github.repository }}" --input -
