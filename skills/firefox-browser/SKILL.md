@@ -173,7 +173,7 @@ return (args) => {
 
 ## 排查与用法要点
 
-- **点击没反应**按这个顺序查：`effect.verified` 是 `false` 吗（= 动作没生效）→ `browser_network` 看请求（4xx/5xx、CORS 拒绝、被拦截的第三方调用，**这是最常见的原因**）→ `browser_logs` 看 console 报错 → 重新 `browser_snapshot`（结构可能变了）。完整清单见 `docs/troubleshooting.md`。`browser_network` 的 URL **永远不带 query string**（那里可能藏着会话 token），只看 origin + path。
+- **点击没反应**按这个顺序查：`effect.verified` 是 `false` 吗（= 动作没生效）→ `browser_network` 看请求（4xx/5xx、CORS 拒绝、被拦截的第三方调用，**这是最常见的原因**）→ `browser_logs` 看 console 报错 → 重新 `browser_snapshot`（结构可能变了）。`browser_network` 的 URL **永远不带 query string**（那里可能藏着会话 token），只看 origin + path。
 - **浏览器按需启动。** 任何工具在实例未运行时都会自动拉起 Firefox——不需要先调 `browser_start`。首次调用会复制 profile 并等待 BiDi 端点就绪，可能需要十几秒。profile 副本默认 24 小时过期（`FIREFOX_BROWSER_PROFILE_TTL_HOURS`），过期后重建。**不需要指定 contextId**：省略时自动作用于最近使用的标签页，只有在同时操作多个标签页、且要精确指定目标时才传。
 - **重页面用 `wait: "none"`**（`bing.com`、`addons.mozilla.org` 这类默认的 `complete` 可能超过 30 秒的 BiDi 命令超时而报错——但页面其实已经加载好了），然后用 `browser_wait_for` 等到你要的东西。
 - **只支持 Firefox。** Firefox 没有 CDP，WebDriver BiDi 是唯一路径。Chrome/Edge 请用宿主内置的浏览器能力。
