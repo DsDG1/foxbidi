@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Drive a real Firefox via WebDriver BiDi from MCP tools — zero npm dependencies.",
   "license": "MIT",
-  "author": "DEGTHEDIG <143299314+DsDG1@users.noreply.github.com>",
+  "author": "DEGTHEDIG <143599314+DsDG1@users.noreply.github.com>",
   "homepage": "https://github.com/DsDG1/foxbidi#readme",
   "repository": {
     "type": "git",
