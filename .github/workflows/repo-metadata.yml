@@ -40,5 +40,9 @@ jobs:
           TOPICS: ${{ steps.meta.outputs.topics }}
         run: |
           jq -n --arg d "$DESCRIPTION" --arg h "$HOMEPAGE" --argjson t "$TOPICS" \
-            '{description: $d, homepage: $h, topics: $t}' | \
-            gh api --method PATCH "repos/${{ github.repository }}" --input -
+            '{description: $d, homepage: $h, topics: $t}' > /tmp/body.json
+          if ! out=$(gh api --method PATCH "repos/${{ github.repository }}" --input /tmp/body.json 2>&1); then
+            echo "::error::gh api failed: ${out}"
+            exit 1
+          fi
+          echo "$out" | jq '{full_name, description, homepage, topics}'

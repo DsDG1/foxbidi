@@ -67,4 +67,17 @@ jobs:
         run: npm run test:unit
 
       - name: Integration tests
-        run: npm run test:integration
+        run: |
+          npm run test:integration 2>&1 | tee /tmp/integration.log || true
+          {
+            echo '### Integration tests'
+            echo '```'
+            tail -100 /tmp/integration.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if grep -q 'fail 0' /tmp/integration.log; then
+            echo 'every integration test passed'
+          else
+            echo '::error::integration tests failed — the tail of the run is in the step summary'
+            exit 1
+          fi
