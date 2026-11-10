@@ -83,7 +83,23 @@ describe('the page-side visibility script', () => {
 
   test('content below the fold is not treated as hidden', () => {
     // A human scrolls to it; calling that "hidden" would flag every long
-    // page on the web.
-    assert.ok(VISIBILITY_SCRIPT.includes('belowFold'))
+    // page on the web. The rule is "outside the window in a direction a
+    // human cannot scroll to" — above, left or right.
+    assert.ok(!VISIBILITY_SCRIPT.includes('belowFold'))
+    assert.ok(VISIBILITY_SCRIPT.includes('rect.bottom <= 0'))
+    assert.ok(VISIBILITY_SCRIPT.includes('rect.left >= vw'))
+  })
+
+  test('the script computes one style lookup per element', () => {
+    // The colour is read from the style object the caller already has.
+    // A second lookup for the same element doubled the cost of the scan.
+    assert.ok(VISIBILITY_SCRIPT.includes('const effectiveColor = (s)'))
+    assert.ok(!VISIBILITY_SCRIPT.includes('effectiveColor(el)'))
+  })
+
+  test('the script caches the effective background', () => {
+    // A flat page made the old script walk the whole ancestor chain for
+    // every element. The cache makes it one lookup.
+    assert.ok(VISIBILITY_SCRIPT.includes('bgCache'))
   })
 })
