@@ -12,6 +12,7 @@ on:
   push:
     paths:
       - .github/repo-metadata.json
+      - .github/workflows/repo-metadata.yml
   workflow_dispatch:
 
 permissions:
@@ -27,17 +28,17 @@ jobs:
       - name: Read the metadata
         id: meta
         run: |
-          description=$(jq -r '.description' .github/repo-metadata.json)
-          topics=$(jq -c '.topics' .github/repo-metadata.json)
-          echo "description=${description}" >> "$GITHUB_OUTPUT"
-          echo "topics=${topics}" >> "$GITHUB_OUTPUT"
+          echo "description=$(jq -r '.description' .github/repo-metadata.json)" >> "$GITHUB_OUTPUT"
+          echo "homepage=$(jq -r '.homepage' .github/repo-metadata.json)" >> "$GITHUB_OUTPUT"
+          echo "topics=$(jq -c '.topics' .github/repo-metadata.json)" >> "$GITHUB_OUTPUT"
 
       - name: Apply it to the repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DESCRIPTION: ${{ steps.meta.outputs.description }}
+          HOMEPAGE: ${{ steps.meta.outputs.homepage }}
           TOPICS: ${{ steps.meta.outputs.topics }}
         run: |
-          jq -n --arg d "$DESCRIPTION" --argjson t "$TOPICS" \
-            '{description: $d, topics: $t}' | \
+          jq -n --arg d "$DESCRIPTION" --arg h "$HOMEPAGE" --argjson t "$TOPICS" \
+            '{description: $d, homepage: $h, topics: $t}' | \
             gh api --method PATCH "repos/${{ github.repository }}" --input -
