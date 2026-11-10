@@ -43,6 +43,7 @@ const PAGE = `<!doctype html>
   <label for="plain">Search</label>
   <input id="plain" name="q" value="hello world">
   <button id="log" onclick="console.log('token=abc123def456')">Log</button>
+  <p>token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijk</p>
 </body></html>`
 
 describe('redaction (live browser)', { skip }, () => {
@@ -122,5 +123,22 @@ describe('redaction (live browser)', { skip }, () => {
     const text = JSON.stringify(logs.logs || logs)
     assert.ok(!text.includes('abc123def456'), 'the token must not reach the log buffer')
     assert.ok(text.includes('token='), 'the message around it must survive')
+  })
+
+  test('page text is redacted on the text channel', async () => {
+    await provider.navigate('data:text/html;charset=utf-8,' + encodeURIComponent(PAGE))
+    const text = await provider.text(undefined, { maxChars: 4000 })
+    assert.equal(text.ok, true, text.error)
+    assert.ok(!text.value.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'))
+    assert.ok(text.value.includes('<redacted>'))
+    assert.equal(text.redacted, true)
+  })
+
+  test('the snapshot text blocks are redacted too', async () => {
+    await provider.navigate('data:text/html;charset=utf-8,' + encodeURIComponent(PAGE))
+    const snap = await provider.snapshot(undefined, { includeText: true })
+    assert.equal(snap.ok, true, snap.error)
+    const joined = (snap.texts || []).join('\n')
+    assert.ok(!joined.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'))
   })
 })
