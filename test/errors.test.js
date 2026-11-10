@@ -185,11 +185,18 @@ describe('the documented error vocabulary', () => {
     // the file, so the per-code check above would not catch it. The table
     // is checked structurally instead: every row in the code table names a
     // code that exists.
+    //
+    // Only the ERROR CODE table is checked. The reference also documents
+    // the fields a reading tool returns, and those rows name fields, not
+    // codes — scanning them here would report every one of them as an
+    // unknown code.
     const reference = readFileSync(
       new URL('../skills/firefox-browser/REFERENCE.md', import.meta.url),
       'utf8',
     )
-    const table = reference
+    const section = reference.split('## 错误契约')[1] || ''
+    const codeTable = section.split('\n## ')[0]
+    const table = codeTable
       .split('\n')
       .filter((line) => line.startsWith('| `'))
       .map((line) => {

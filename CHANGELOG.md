@@ -5,7 +5,75 @@ All notable changes to the `firefox-browser` plugin are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/), and
 versions follow `MAJOR.MINOR.PATCH`.
 
-## Unreleased
+## v2.5.0 — 2026-11-10
+
+提示词注入防护（分层）、两个既有缺陷修复、工具目录按 preset 裁剪。
+工具名、参数名、参数类型和顺序**全部不变**，只新增了可选参数。
+
+### Fixed
+
+- **`browser_text` 与 `browser_evaluate` 未经过脱敏层** —— 插件对 cookie 值、
+  console 日志、快照输入框值、响应体做了严格脱敏，但页面正文和 evaluate
+  的返回值是原样进上下文的：JWT、`Bearer` 令牌会直接出现在 Agent 看到的内容里。
+  现在这两条通道（以及快照的可见文本块）共用 `lib/firefox/redact.js`。
+  `README.md` 里"所有通道都脱敏"的陈述此前并不成立，现已对齐实现。
+- **`browser_evaluate` 吞掉页面异常** —— 页面表达式抛异常、语法错误、引用
+  未定义变量，三种情况都返回 `ok: true` 且没有 `value`。BiDi 把页面异常
+  作为**正常响应**返回（`type: "exception"`），不走 error envelope，所以
+  client 不会 reject，`unwrapRemoteValue` 再落到 default 分支变成
+  `undefined` —— 与"表达式确实返回了 undefined"无法区分。现在返回
+  `code: "evaluate_failed"` 并带页面侧的异常文本。
+
+### Added
+
+- **可见性事实层**（`lib/firefox/visibility.js`）—— 页面侧计算渲染事实：
+  离屏、白底白字、1px 字号、`opacity:0`、clip、透明色。**不删除任何内容**。
+  实测证明删除会误伤真实站点：离屏抽屉菜单、hover 显现面板、sr-only 无障碍
+  标签都会被判定为"隐藏"。折叠区以下的内容**不算**隐藏 —— 人能滚动看到。
+- **指令样检测层**（`lib/firefox/injection.js`）—— 高精度的指令句式匹配
+  （重置指令、角色重设、系统提示伪装、越权请求、保密要求）与编码载荷检测。
+  延续既有原则：不做通用高熵检测，不做语义分类。
+- **信任层**（`lib/firefox/provenance.js`）—— 页面内容返回 `source`
+  （只给 origin）、`signals`（未达告警阈值的信号）、`warnings`（达到阈值的
+  告警）。告警需要**两个独立条件同时成立**：渲染事实 ∧ 指令句式。单独命中
+  任一项不告警，否则真实站点的抽屉菜单会产生大量噪音。
+- **硬阻断**（`lib/firefox/injection-gate.js`）—— 页面存在 high 级告警时，
+  数据外行动作（表单提交、账号变更、上传、下载、写 cookie、装扩展）被拒绝，
+  返回 `code: "injection_blocked"`。**这个阻断不会被 `confirm: true` 解除** ——
+  那个参数是 Agent 自己提供的，被劫持的 Agent 可以自己补上；解除只能由用户
+  通过 `FIREFOX_BROWSER_INJECTION_GATE=off` 完成。读取永远不受限。
+- **工具目录按 preset 裁剪** —— `tools/list` 现在按当前 preset 返回子集，
+  切换 preset 后发送 `notifications/tools/list_changed`（宿主已验证会响应
+  并重新拉取）。`browser_config` 永远在列表中，被裁掉的工具通过
+  `browser_config({preset: "all"})` 恢复。默认 preset 保持 `basic`。
+- **快照增量** —— `browser_snapshot` 新增可选参数 `since`，在上次快照的基础上
+  附加一个 `delta` 字段（新增 / 变化 / 消失）。全量快照仍是默认，位置变化
+  不算变化（滚动会改所有元素的 rect）。
+
+### Environment
+
+| 变量                             | 默认     | 含义                                         |
+| -------------------------------- | -------- | -------------------------------------------- |
+| `FIREFOX_BROWSER_INJECTION_GATE` | `strict` | `strict` / `off`。硬阻断开关；Agent 无法读写 |
+
+### Changed
+
+- `browser_evaluate` 的返回值现在有上限（默认 8KB），超限时返回
+  `truncated: true`。此前页面可以一次把 1MB 灌进上下文。
+
+### Known limitations
+
+- 页面脚本与插件的快照脚本运行在**同一个 realm**里。一个刻意对抗检测的页面
+  可以覆写 `window.getComputedStyle` 让一切看起来可见，从而绕开可见性事实层。
+  这需要页面主动对抗，而不是"顺手藏一段文字"，因此不在本期范围内 ——
+  Firefox 的 BiDi 目前没有隔离世界（isolated world）可用。
+- `browser_evaluate` 在带 high 级告警的页面上只需要 `confirm: true`，而
+  `confirm: true` 由 Agent 自己提供。硬阻断覆盖的是显式的数据外发动作
+  （表单提交、上传、下载、写 cookie、装扩展），但一个被劫持的 Agent 理论上
+  仍可以用 `evaluate` 发起 `fetch`。取舍是：把 evaluate 一并硬阻断会让
+  Agent 连"读出注入内容转告用户"都做不到，防御变成自伤。
+
+## v2.4.0 — 2026-11-10
 
 安全性加固：修复三个已验证的漏洞，并补上四处纵深防御。**工具名、参数名、参数类型
 和顺序全部不变**，只新增了可选参数。

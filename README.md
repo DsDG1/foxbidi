@@ -297,7 +297,10 @@ exactly the shape the server sends for `tools/list`:
 | --------------------------------- | --------- | -------- |
 | v2.2.0 (34 tools)                 | 37925     | 1115     |
 | v2.3.0 before the trim (38 tools) | 44128     | 1161     |
-| v2.3.0 after the trim (38 tools)  | **33380** | **879**  |
+| v2.3.0 after the trim (38 tools)  | 33380     | 879      |
+| v2.5.0 slim preset (22 tools)     | **18774** | **854**  |
+| v2.5.0 basic preset (32 tools)    | **27621** | **863**  |
+| v2.5.0 full catalogue (38 tools)  | 33672     | 886      |
 
 The trim cut the tool descriptions to one short clause each, shortened the
 shared schema fragments (one of which is copied into 27 tools, so its wording is
@@ -305,13 +308,21 @@ multiplied by 27), and made the output-schema property descriptions optional.
 Tool names, parameters, types and order did not change — only prose moved, and
 it moved into the skill's reference file, which is read on demand.
 
-**What was deliberately not done.** The largest remaining lever is the number
-of tools: trimming the catalogue to a task-appropriate subset would save
-roughly 55%, far more than trimming descriptions did. It was left out on
-purpose, because a tool the agent cannot see is a tool it will not use, and
-deciding which tools a task needs is a product decision rather than a
-refactor. The `browser_config` preset (`slim` / `basic` / `developer` / `all`)
-already exists as the seam for it.
+**The catalogue is now trimmed to the active preset.** `tools/list` returns
+only the tools the current preset exposes, and the server tells the host when
+that set changes. The default preset is `basic`, which saves about 6KB per
+turn against the full catalogue and 18KB against the pre-trim size; `slim` saves
+almost half. `browser_config` is always in the list, so the agent can widen
+the set itself:
+
+```json
+{ "tool": "browser_config", "args": { "preset": "all" } }
+```
+
+**What was deliberately not done.** The catalogue is trimmed by PRESET, not per
+task: deciding which tools a particular task needs is a product decision, and a
+tool the agent cannot see is a tool it will not use. The preset is the seam for
+that decision, and the user can always widen it.
 
 ## Two browser surfaces, and how to move between them
 
@@ -558,10 +569,31 @@ Layout:
   as a named, visible tool rather than a hidden escape hatch.
 - **Every channel that carries raw page content is redacted** (see
   `lib/firefox/redact.js`): cookie values, the page's console output, input
-  field values in a snapshot, and response bodies. A password, a one-time
-  code and a card number are all values a page can hold, and only a password
-  was covered before. `revealValues` / `revealBody` are the explicit escape
-  hatches.
+  field values in a snapshot, response bodies, the text read by
+  `browser_text`, the visible text blocks of a snapshot, and the value
+  returned by `browser_evaluate`. A password, a one-time code and a card
+  number are all values a page can hold, and only a password was covered
+  before. `revealValues` / `revealBody` are the explicit escape hatches.
+- **Content that a human cannot see is reported, and can stop an action.**
+  A page can hide text from a person — off-screen, white-on-white, a 1px
+  font, a clip — while leaving it in the DOM for an agent to read. The
+  plugin computes those render facts (`lib/firefox/visibility.js`), checks
+  the text for instruction patterns (`lib/firefox/injection.js`), and
+  reports the combination as `warnings[]` on the reading tools. Nothing is
+  deleted: off-canvas menus and screen-reader labels are legitimately
+  hidden, and removing them would break real sites.
+- **A hidden injection can block data egress.** When a page carries a
+  high-severity warning, the actions that would carry data out — form
+  submits, uploads, downloads, cookie writes, extension installs — are
+  refused with `code: 'injection_blocked'`. This block is deliberately
+  NOT released by `confirm: true`: the agent supplies that flag itself, so
+  a hijacked agent could release its own lock. Only the user can, by
+  setting `FIREFOX_BROWSER_INJECTION_GATE=off`. Reading the page is never
+  blocked — the agent needs to read it to report what happened.
+- **Page content is labelled as page content.** Reading tools return a
+  `source` field (`{origin, kind, trusted}`) alongside `warnings[]`. The
+  `origin` is the site's origin only — never the full URL, because the
+  query string routinely carries session tokens.
 - Captured request URLs are stripped of their query string and fragment before
   they leave the plugin — query strings routinely carry session tokens. No
   headers, cookies or bodies are captured.

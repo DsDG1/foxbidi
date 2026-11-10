@@ -14,11 +14,11 @@
 
 ## 读取
 
-- `browser_snapshot` — `maxElements`（默认 300，上限 5000）、`offset`（配返回的 `nextOffset` 翻页）、`roleFilter`（如 `["button","link"]`）、`nameContains`（按无障碍名过滤）、`includeText`（附带可见文本块）、`frames: "all"`（连 iframe 内容一起快照，refs 带 frame 前缀）。
+- `browser_snapshot` — `maxElements`（默认 300，上限 5000）、`offset`（配返回的 `nextOffset` 翻页）、`roleFilter`（如 `["button","link"]`）、`nameContains`（按无障碍名过滤）、`includeText`（附带可见文本块）、`frames: "all"`（连 iframe 内容一起快照，refs 带 frame 前缀）、`since`（上次的 `snapshotId`，会在全量列表之外附带一个 `delta` 字段）。
 - `browser_text` — `maxChars`（默认 8000）、`offset`（字符偏移）、`selector`（只读某个元素）。
 - `browser_network` — `status`（如 `["4xx","5xx","error"]`）、`types`（如 `["xhr","fetch"]`）、`filter`（URL 子串）、`afterSeq`（只看更新的请求）、`limit`（默认 50）、`requestId` + `bodyType`（取响应体，Firefox 144+）。**响应体默认脱敏**（只替换明确的 secret 形态）；要原样传 `revealBody: true`。
 - `browser_logs` — `channel`（`console` / `plugin` / `bidi` / `all`）、`levels`、`filter`、`limit`。
-- `browser_evaluate` — `expression` 在页面上下文执行，返回其值。
+- `browser_evaluate` — `expression` 在页面上下文执行，返回其值。`confirm`（页面带隐藏注入时必需）。返回值有上限（默认 8192 字符），超限返回 `truncated: true`；页面侧抛异常返回 `code: "evaluate_failed"`。
 - `browser_screenshot` — `fullPage`（整篇文档而不是视口）、`elementRef`（只截某个快照 ref）。
 
 ## 动作
@@ -85,3 +85,24 @@
 | `internal`               | 插件内部错误                              |
 
 `hint` 字段会说明下一步该做什么。
+
+`injection_blocked` 与 `confirm_required` **不是一回事**：`confirm_required`
+用 `confirm: true` 就能重试，而 `injection_blocked` **解不开** —— 那个参数是
+Agent 自己填的，页面能骗你填。只有用户可以解除（`FIREFOX_BROWSER_INJECTION_GATE=off`）。
+读取永远不受限。
+
+## 页面内容返回的字段
+
+读取类工具（`browser_text` / `browser_snapshot` / `browser_evaluate`）返回：
+
+| 字段        | 含义                                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source`    | `{origin, kind, trusted}`。`origin` 只到 origin 级别，不含 query。`trusted` 恒为 `false` —— 这是"内容来自网页"的事实陈述，不是安全判断。                 |
+| `signals`   | 命中但未达告警阈值的信号（`{kind}`）。不阻断任何动作。                                                                                                   |
+| `warnings`  | 达到阈值的告警。`code` ∈ `hidden_injection` / `hidden_encoded_payload` / `aria_hidden_injection` / `encoded_injection`；`severity` ∈ `high` / `medium`。 |
+| `redacted`  | 该次读取是否发生了脱敏。                                                                                                                                 |
+| `truncated` | 输出是否被截断。                                                                                                                                         |
+| `delta`     | 仅 `browser_snapshot` 带 `since` 时出现：`{since, added, changed, removed}`。全量 `elements` 仍然照常返回。                                              |
+
+告警要求**两个独立条件同时成立**：渲染事实（人眼看不到）∧ 指令句式。只命中其中
+一项不告警 —— 真实站点的抽屉菜单、hover 面板、无障碍标签都是"隐藏但无害"的。
