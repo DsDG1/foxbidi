@@ -1,6 +1,6 @@
 {
   "name": "firefox-browser",
-  "version": "2.9.0",
+  "version": "2.9.1",
   "private": true,
   "type": "module",
   "description": "Drive a real Firefox via WebDriver BiDi from MCP tools — zero npm dependencies.",
@@ -16,7 +16,10 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "validate": "node tools/validate-package.mjs"
+    "validate": "node tools/validate-package.mjs",
+    "contract": "node tools/check-host-contract.mjs",
+    "publish": "node tools/publish.mjs",
+    "publish:dry": "node tools/publish.mjs --dry-run"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

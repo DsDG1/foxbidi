@@ -5,6 +5,43 @@ All notable changes to the `firefox-browser` plugin are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/), and
 versions follow `MAJOR.MINOR.PATCH`.
 
+## v2.9.1 — 2026-11-10
+
+插件**从宿主里消失**了——不是被禁用，是宿主根本没扫到它。这版把根因修掉，
+并把它变成一条可执行的检查：以后这类故障在提交阶段就暴露，而不是等到
+"插件不见了"才发现。
+
+宿主把 `~/.minimax/plugins/` 的每个直接子目录当作一个本地插件包来扫描，
+并套用 `PLUGIN_PACKAGE_V1_LIMITS`（文件 ≤1024、条目 ≤2048、单文件 ≤16MB、
+总量 ≤64MB）与 `minimax-portable` 路径策略（每段路径必须匹配
+`^[A-Za-z0-9._-]+$`，禁符号链接/硬链接/特殊文件）。**扫描失败不会报错**：
+契约错误被降级成一条 diagnostic，插件不进注册表——`mcode plugin list` 里
+没有它，宿主也不注入任何工具。
+
+实测当时的插件目录：2276 个文件 / 2805 个条目 / 5 个符号链接 / 186 个非法
+路径段，四类上限同时被突破——`node_modules` 里的作用域包（`@eslint`）、
+`.git`，以及 Firefox 缓存里那个带 `=` 的文件。宿主不读 `.gitignore`，所以
+"把 node_modules 加进 .gitignore" 并不能让插件目录合规。
+
+### Added
+
+- **`tools/check-host-contract.mjs`** —— 在本地复刻宿主的包契约：文件数、
+  条目数、字节上限、路径可移植性、符号链接/硬链接、大小写冲突。宿主会
+  静默丢弃的包，在这里先失败。`npm run contract -- <目录>`。
+- **`tools/publish.mjs`** —— 从 git 索引把已安装包写出来，再按契约自检。
+  `npm run publish` / `npm run publish:dry`。
+- **CI 的「发布产物契约」步骤** —— 校验的是**发布产物**而不是检出目录
+  （检出目录带着 `node_modules`，本来就不可能合规）。
+
+### Changed
+
+- **开发仓库与已安装包分离** —— 仓库迁到 `~/src/firefox-browser`，宿主目录
+  `~/.minimax/plugins/firefox-browser` 只保留 `git ls-files` 认定的文件
+  （当前 171 个），不含 `.git`、`node_modules`、运行时残留。
+- **开发副本与已安装副本共用同一份运行时数据** —— profile 副本与控制
+  socket 都落在 `<插件根>/../.plugin-data/firefox-browser`，两处插件根不同
+  就会各拉一份守护进程；用 `FIREFOX_BROWSER_PROFILE_COPY` 指回同一处。
+
 ## v2.9.0 — 2026-11-10
 
 把**降级路径**从"考古才能走通"变成"一条命令"，并把每次调用的 token 成本砍掉一半。

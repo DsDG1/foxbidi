@@ -51,6 +51,11 @@ jobs:
       - name: Package validation
         run: npm run validate
 
+      - name: Published package contract
+        run: |
+          node tools/publish.mjs --target "$RUNNER_TEMP/pkg"
+          node tools/check-host-contract.mjs "$RUNNER_TEMP/pkg"
+
       - name: Unit tests
         run: npm run test:unit
 

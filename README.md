@@ -638,6 +638,9 @@ npm run lint            # ESLint (flat config)
 npm run format          # Prettier, in place
 npm run format:check    # Prettier, check only
 npm run validate        # validate the plugin package
+npm run contract        # check a directory against the host's package contract
+npm run publish         # write the installed package into the host's plugins root
+npm run publish:dry     # same, without touching the disk
 ```
 
 The integration tests launch a real Firefox and skip themselves when none is
@@ -646,6 +649,46 @@ runner runs files in parallel.
 
 The plugin has **no runtime npm dependencies** — ESLint and Prettier are
 devDependencies only, and the MCP server runs on a bare Node install.
+
+### The repository and the installed package are two different things
+
+The development repository lives in `~/src/firefox-browser`. The installed
+package lives in `~/.minimax/plugins/firefox-browser`. They are **separate on
+purpose**: the host scans the installed directory as a plugin package, and a
+directory that breaks the package contract is dropped **without an error** —
+the plugin simply vanishes from `mcode plugin list` and the agent gets no
+tools at all.
+
+The host applies `PLUGIN_PACKAGE_V1_LIMITS` (≤1024 files, ≤2048 entries,
+≤16MB per file, ≤64MB in total) and the `minimax-portable` path policy (every
+path segment must match `^[A-Za-z0-9._-]+$`; no symlinks, hardlinks or
+special files). The host does **not** read `.gitignore`, so ignoring
+`node_modules/` does not make a directory compliant.
+
+So the installed directory holds exactly the files `git ls-files` names — no
+`.git`, no `node_modules`, no runtime scratch:
+
+```bash
+npm run publish          # write the package and verify it against the contract
+npm run contract -- ~/.minimax/plugins/firefox-browser   # check any directory
+```
+
+`npm run publish` refuses to wipe a target that does not look like a plugin
+package (use `--force` if you really mean it), and it verifies the result
+before reporting success.
+
+### One runtime data directory, two copies of the code
+
+The profile copy and the control socket both live under
+`<plugin root>/../.plugin-data/firefox-browser`. Two copies of the code mean
+two plugin roots, so they would each spawn their own daemon and their own
+profile copy. Point the development copy at the installed copy's data
+directory:
+
+```bash
+export FIREFOX_BROWSER_PROFILE_COPY="$HOME/.minimax/plugins/.plugin-data/firefox-browser"
+node tools/ff-call.mjs browser_status
+```
 
 Layout:
 
