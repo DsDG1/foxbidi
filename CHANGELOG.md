@@ -301,7 +301,7 @@ versions follow `MAJOR.MINOR.PATCH`.
 
 ### Known limitations
 
-- 页面脚本与插件的快照脚本运行在**同一个 realm**里。一个刻意对抗检测的页面
+- 页面脚本与插件的快照脚本运行在**同一个 realm**里。一个对抗检测的页面
   可以覆写 `window.getComputedStyle` 让一切看起来可见，从而绕开可见性事实层。
   这需要页面主动对抗，而不是"顺手藏一段文字"，因此不在本期范围内 ——
   Firefox 的 BiDi 目前没有隔离世界（isolated world）可用。
