@@ -32,6 +32,7 @@ description: 用真实 Firefox 浏览网页并执行交互动作（打开链接�
 ├─ 看有什么可点的    → browser_snapshot（roleFilter 缩小范围；frames:"all" 含 iframe）
 ├─ 点/输入/选择      → browser_click / browser_type / browser_select_option / browser_check
 ├─ 确认页面对不对    → browser_verify（拿结论；element/text/value/list）
+├─ 找说某句话的东西  → browser_find（拿位置；元素带 ref，正文另报）
 ├─ 读文字            → browser_text（长文分页读 offset/nextOffset；或 snapshot+includeText）
 ├─ 页面没反应        → browser_network 找 4xx/5xx → browser_logs 看 console → 重新快照
 ├─ 连续几步          → browser_batch（一次调用走完，省往返）
@@ -54,9 +55,9 @@ description: 用真实 Firefox 浏览网页并执行交互动作（打开链接�
 
 所有元素类工具都收 `ref`（推荐）或 `selector`（兜底）。两个都给时 **ref 优先**，selector 被忽略并会提示。
 
-## 断言
+## 问页面
 
-`browser_verify` 回答"页面现在对不对"，返回结论而不是一堆原始数据。
+**`browser_verify` 回答"页面现在对不对"**，返回结论而不是一堆原始数据。
 
 | `kind`    | 问的问题                  | 需要给                     |
 | --------- | ------------------------- | -------------------------- |
@@ -69,7 +70,9 @@ description: 用真实 Firefox 浏览网页并执行交互动作（打开链接�
 
 **凭据字段断言不到**：密码、验证码、卡号的真值**从来没有离开过页面**，插件手里没有可比对的东西，所以返回 `code:"redacted_value"`，而不是给你一个假的空值。同理 `kind:"text"` 断言真验证码也会失败——可见文本是脱敏后才读的。
 
-**分工**：`browser_verify` 拿**结论**，`browser_snapshot` 拿**地图**（后续动作要用的 ref）。
+**`browser_find` 回答"说这句话的东西在哪"**。`text` 必填（子串，不区分大小写）。结果**分开报**：`elements` 是能点的元素（带 `ref`，还有前后邻居告诉你它在页面的哪个位置），`texts` 是正文里的段落（没有 ref，别去点它）。`context` 控制邻居数量（默认 2）。
+
+**分工**：`browser_verify` 拿**结论**，`browser_find` 拿**位置**，`browser_snapshot` 拿**地图**（后续动作要用的 ref）。
 
 ## 省 token
 
@@ -79,7 +82,7 @@ description: 用真实 Firefox 浏览网页并执行交互动作（打开链接�
 - **browser_batch** 把"点击 → 输入 → 快照"从 3 次往返压成 1 次。
 - **长文本分页读**：`browser_text` 截断后带 `nextOffset`，只续读需要的部分。
 - **browser_evaluate 只在专用工具不够用时用**——它返回的一切都会进上下文。
-- **工具目录是裁剪过的**：`browser_config` 永远在列表里。`basic`（默认）覆盖日常浏览，`slim` 更省，`all` 是全部。工具不够用就 `browser_config({preset:"slim"})` 或 `{preset:"all"}` 换回来。
+- **工具目录是裁剪过的**：`browser_config` 永远在列表里。`basic`（默认）覆盖日常浏览，`slim` 更省，`all` 是全部。工具不够用就 `browser_config({preset:"all"})` 换回来。
 - **页面没变就别重读**：`browser_snapshot({since: 上次的 snapshotId})` 会附带一个 `delta` 字段（新增/变化/消失），全量列表仍然照常返回。
 
 ### 沉淀 helper（browser-harness 模式）
@@ -112,9 +115,7 @@ return (args) => {
 | `browser_detectability`         | 实测本会话有多容易被检测                                 | —          |
 | `browser_network` + `requestId` | 读响应体                                                 | **FF144+** |
 
-**用之前先看 `browser_status`**：它一次报清"什么 Firefox、哪些能力可用、ref 存哪、有没有挂起的弹窗"。它是只读的——不会为了回答问题而启动浏览器。浏览器没跑时，能力矩阵是按版本号推出来的**预期**（`capabilities.probed` 为 `false`）；跑起来之后就是实探结果。
-
-能力不可用时，工具会返回 `capability_unavailable` 并写明"需要 Firefox >= 144"、当前版本、以及替代做法——**不是**一句看不懂的 `unknown command`。`browser_intercept` 的 URL 匹配在插件侧做：装上拦截后所有请求会被 Firefox 挂起，插件逐个决定放行还是失败，所以**页面不会被永久冻住**。用完 `browser_intercept({action:"clear"})` 收掉。
+**用之前先看 `browser_status`**：它一次报清"什么 Firefox、哪些能力可用、ref 存哪、有没有挂起的弹窗"。它是只读的——不会为了回答问题而启动浏览器。浏览器没跑时，能力矩阵是按版本号推出来的**预期**（`capabilities.probed` 为 `false`）；跑起来之后就是实探结果。能力不可用时，工具会返回 `capability_unavailable` 并写明"需要 Firefox >= 144"、当前版本、以及替代做法——**不是**一句看不懂的 `unknown command`。`browser_intercept` 的 URL 匹配在插件侧做：装上拦截后所有请求会被 Firefox 挂起，插件逐个决定放行还是失败，所以**页面不会被永久冻住**。用完 `browser_intercept({action:"clear"})` 收掉。
 
 ## 反检测：能做什么，不能做什么
 
@@ -122,9 +123,7 @@ return (args) => {
 
 ## 验证码（可选能力）
 
-`browser_captcha` 是**可选**的：不调用它，插件什么都不做。`{"solver":"auto","sttUrl":"http://127.0.0.1:8000"}`；`solver` 可填 `turnstile` / `recaptcha` / `hcaptcha` / `geetest` / `pow` / `spin`。
-
-**成功判据是站点发放的 token，不是"点中了"**：`ok:true` 只在 token 长度 > 0 时返回，否则 `ok:false` + `status`。插件**不含任何模型**：音频挑战要你指一个 Whisper 兼容服务（`sttUrl`），没有就报 `stt_unavailable`；图片九宫格默认不支持（可传 `visionUrl`）。**缺服务就报错，绝不假装成功。** 已端到端验证：Turnstile、百度旋转验证码（`spin`）。未在本机验证：reCAPTCHA v2 / hCaptcha / GeeTest / PoW。**细节见 `docs/captcha.md`。**
+`browser_captcha` 是**可选**的：不调用它，插件什么都不做。`{"solver":"auto","sttUrl":"http://127.0.0.1:8000"}`；`solver` 可填 `turnstile` / `recaptcha` / `hcaptcha` / `geetest` / `pow` / `spin`。**成功判据是站点发放的 token，不是"点中了"**：`ok:true` 只在 token 长度 > 0 时返回，否则 `ok:false` + `status`。插件**不含任何模型**：音频挑战要你指一个 Whisper 兼容服务（`sttUrl`），没有就报 `stt_unavailable`；图片九宫格默认不支持（可传 `visionUrl`）。**缺服务就报错，绝不假装成功。** 已端到端验证：Turnstile、百度旋转验证码（`spin`）。未在本机验证：reCAPTCHA v2 / hCaptcha / GeeTest / PoW。**细节见 `docs/captcha.md`。**
 
 ## 不可逆动作需要确认
 
@@ -156,7 +155,9 @@ return (args) => {
 
 导航默认拒绝私网/环回地址（`127.0.0.1`、`localhost`、`10.x`、`192.168.x`）和 `file:`/`data:` 等 scheme——带真实登录态的浏览器能访问机器上你访问不到的服务。被拒时返回 `code: "navigation_blocked"`。需要调本地开发服务：`FIREFOX_BROWSER_ALLOW_PRIVATE_HOSTS=1`。
 
-每次工具调用都写一条审计到 `<插件数据目录>/audit/<日期>.jsonl`：做了什么、点了哪个控件、是否被拦。**审计不记录输入文本和 cookie 值**。路径见 `browser_status` 的 `audit` 字段。## 在两个浏览器之间交接
+每次工具调用都写一条审计到 `<插件数据目录>/audit/<日期>.jsonl`：做了什么、点了哪个控件、是否被拦。**审计不记录输入文本和 cookie 值**。路径见 `browser_status` 的 `audit` 字段。
+
+## 在两个浏览器之间交接
 
 `browser_handoff` 负责搬页面。**Firefox → 内置浏览器**：只读，`{ "to": "in-app" }` 返回 URL 和引导（`carry: "url+summary"` 还会带上当前页可交互元素摘要）。**内置浏览器 → Firefox**：有动作，`{ "to": "firefox", "url": "..." }` 会真的导航并回报 `effect`（含 `verified`）。**不共享状态**：交接过去的只是 URL，登录态、cookie、标签页都留在原表面。需要 Firefox 的登录态就往 Firefox 交。
 
@@ -176,7 +177,7 @@ ref 绑定在 DOM 上。**页面一旦重新渲染**（React 刷新、翻页、A
 
 ## 工具速查
 
-**读**：`browser_snapshot`（第一步）· `browser_verify`（拿结论）· `browser_text` · `browser_tabs` · `browser_logs` · `browser_network` · `browser_screenshot` · `browser_evaluate` · `browser_detectability` · `browser_status`
+**读**：`browser_snapshot`（第一步）· `browser_verify`（拿结论）· `browser_find`（拿位置）· `browser_text` · `browser_tabs` · `browser_logs` · `browser_network` · `browser_screenshot` · `browser_evaluate` · `browser_detectability` · `browser_status`
 **动**：`browser_click` · `browser_type` · `browser_press_key` · `browser_select_option` · `browser_check` · `browser_hover` · `browser_scroll` · `browser_upload` · `browser_wait_for` · `browser_batch` · `browser_run_script` · `browser_handle_dialog`
 **Firefox 独有**：`browser_context` · `browser_extension` · `browser_cookie` · `browser_intercept`
 **验证码**：`browser_captcha` · `browser_captcha_status`（可选；不调用就完全不参与）

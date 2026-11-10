@@ -23,44 +23,47 @@ describe('toolset trimming', () => {
   test('browser_config is always reachable', () => {
     for (const preset of ['slim', 'basic', 'developer', 'all']) {
       assert.ok(
-        presetTools(preset).includes('browser_config'),
+        presetTools(preset, TOOL_ORDER).includes('browser_config'),
         `browser_config must survive the ${preset} preset`,
       )
     }
   })
 
   test('the all preset keeps every tool', () => {
-    assert.equal(presetTools('all').length, 39)
+    assert.equal(presetTools('all', TOOL_ORDER).length, 40)
   })
 
   test('the slim preset is smaller than the basic one', () => {
-    assert.ok(presetTools('slim').length < presetTools('basic').length)
+    assert.ok(presetTools('slim', TOOL_ORDER).length < presetTools('basic', TOOL_ORDER).length)
   })
 
   test('the basic preset is smaller than the all one', () => {
-    assert.ok(presetTools('basic').length < presetTools('all').length)
+    assert.ok(presetTools('basic', TOOL_ORDER).length < presetTools('all', TOOL_ORDER).length)
   })
 
   test('the order of the retained tools is preserved', () => {
-    const all = presetTools('all')
-    const basic = presetTools('basic')
+    const all = presetTools('all', TOOL_ORDER)
+    const basic = presetTools('basic', TOOL_ORDER)
     const filtered = all.filter((n) => basic.includes(n))
     assert.deepEqual(basic, filtered, 'the basic preset must preserve the original order')
   })
 })
 
 describe('the preset catalogue stays in step with the real one', () => {
-  // This list drifted once already: the "all" preset silently dropped six
-  // tools, so an agent that asked for everything got a subset and never
-  // found out. The guard is cheaper than a second copy nobody checks.
+  // A hand-written list of names drifted once already: the "all" preset
+  // silently dropped six tools, so an agent that asked for everything got
+  // a subset and never found out. The membership is now COMPUTED from the
+  // capability each tool declares, so there is no second copy to drift —
+  // but the guards below still check that the computation covers every
+  // tool, which is the property the old list failed to keep.
   test('the all preset is exactly the tool order', () => {
-    assert.deepEqual(presetTools('all'), TOOL_ORDER)
+    assert.deepEqual(presetTools('all', TOOL_ORDER), TOOL_ORDER)
   })
 
   test('no preset invents a tool that does not exist', () => {
     const known = new Set(TOOL_ORDER)
     for (const preset of ['slim', 'basic', 'developer', 'all']) {
-      for (const name of presetTools(preset)) {
+      for (const name of presetTools(preset, TOOL_ORDER)) {
         assert.ok(known.has(name), `the ${preset} preset lists an unknown tool: ${name}`)
       }
     }
@@ -68,7 +71,7 @@ describe('the preset catalogue stays in step with the real one', () => {
 
   test('every preset keeps the tools an ordinary task needs', () => {
     for (const preset of ['slim', 'basic', 'developer', 'all']) {
-      const names = presetTools(preset)
+      const names = presetTools(preset, TOOL_ORDER)
       for (const needed of [
         'browser_start',
         'browser_navigate',
@@ -149,7 +152,7 @@ describe('the server tool list', () => {
       const reply = await waitFor(2)
       const tools = reply.result.tools
       assert.ok(tools.length > 0)
-      assert.ok(tools.length < 39, 'the list must be trimmed')
+      assert.ok(tools.length < 40, 'the list must be trimmed')
       assert.ok(
         tools.some((t) => t.name === 'browser_config'),
         'browser_config must always be reachable',
@@ -253,7 +256,7 @@ describe('the server tool list', () => {
       await waitFor(() => replies.has(4))
       const after = replies.get(4).result.tools.length
       assert.ok(after > before, `the list should grow: ${before} -> ${after}`)
-      assert.equal(after, 39)
+      assert.equal(after, 40)
     } finally {
       child.kill()
     }

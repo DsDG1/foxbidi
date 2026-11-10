@@ -5,6 +5,36 @@ All notable changes to the `firefox-browser` plugin are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/), and
 versions follow `MAJOR.MINOR.PATCH`.
 
+## v2.7.0 — 2026-11-10
+
+新增 `browser_find`，并把 preset 的成员判定从"手写工具名名单"改成"按能力计算"。
+
+### Added
+
+- **`browser_find`** —— 在页面上搜一段文字，拿**位置**。`text` 必填（子串匹配，
+  不区分大小写；**不支持正则**——工具目录每轮都进上下文，多一种模式就要多付
+  一次钱，而少数搜索才需要它）。
+  - 结果**分开报**：`elements` 是能点的元素（带 `ref`），`texts` 是正文里的段落
+    （**没有 ref，别去点它**）。混在一起报，agent 就会去点一个段落。
+  - 每个元素命中带**前后邻居**（`before` / `after`，各带 `ref` / `role` / `name`）。
+    上游用"缩进树的路径"表达同一个问题——这东西在页面的哪个位置——但本地快照
+    是**扁平列表、没有父子层级**，没有路径可显示；邻居就是扁平结构下的等价答案。
+  - 找不到是**成功的搜索**：`ok: true`、`total: 0`。
+
+### Changed
+
+- **preset 的成员按能力计算**（`lib/firefox/tool-capabilities.js`）—— 以前每个
+  preset 是一份**手写的工具名名单**，要靠一个测试跟目录保持同步；那份名单漂移过
+  一次，"all" 档悄悄少了六个工具，agent 要了全部却拿到子集，还完全不知道。
+  现在每个工具在**自己的定义旁边**声明所属能力，preset 由这些声明算出——
+  目录只有一份清单，没有第二份会漂移的副本。
+  - 能力分组：`core`（日常主循环）/ `input`（精细输入与标签页）/ `logs` /
+    `assert`（`browser_verify` 与 `browser_find`）/ `cookie` / `firefox`（容器、
+    扩展、拦截、可检测性）/ `captcha`。`slim` = `core`；`basic` 再加 `input`、
+    `logs`、`assert`、`cookie`；`developer` 与 `all` 再加其余。
+  - **preset 成员与顺序完全不变**（slim 仍是 22 个工具，成员逐项一致）。
+  - 能力标签**不进 wire payload**，不占上下文预算。
+
 ## v2.6.0 — 2026-11-10
 
 动作响应自带精简元素列表、新增 `browser_verify` 断言工具。

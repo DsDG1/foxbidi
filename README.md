@@ -247,6 +247,7 @@ so a host can consume the result as data rather than parsing prose.
 | `browser_logs`       | `limit?`, `levels?`, `channel?`, `filter?`                                                         | Buffered logs, split into `console` (the page), `plugin` (what the plugin did) and `bidi` (a command Firefox refused). |
 | `browser_network`    | `limit?`, `status?`, `types?`, `filter?`, `requestId?`                                             | Captured requests. URLs never carry a query string. `requestId` also fetches the response body (Firefox 144+).         |
 | `browser_verify`     | `kind`, `role?`, `name?`, `text?`, `ref?` / `selector?`, `value?`, `items?`, `contextId?`          | Assert something about the page and get a verdict. `kind` is `element`, `text`, `value` or `list`.                     |
+| `browser_find`       | `text`, `context?`, `maxResults?`, `contextId?`                                                    | Search the page for text. Element hits (with refs) and prose hits are reported apart.                                  |
 
 ### Actions
 
@@ -315,6 +316,9 @@ exactly the shape the server sends for `tools/list`:
 | v2.6.0 slim preset (22 tools)     | **17922** | **815**  |
 | v2.6.0 basic preset (32 tools)    | **27422** | **857**  |
 | v2.6.0 full catalogue (39 tools)  | **33167** | **850**  |
+| v2.7.0 slim preset (22 tools)     | **17788** | **808**  |
+| v2.7.0 basic preset (34 tools)    | **28218** | **830**  |
+| v2.7.0 full catalogue (40 tools)  | **33963** | **849**  |
 
 The trim cut the tool descriptions to one short clause each, shortened the
 shared schema fragments (one of which is copied into 27 tools, so its wording is
@@ -330,6 +334,10 @@ every tool ("Failure code when ok is false."), and the inline snapshot became a
 **session** switch rather than a parameter on each of the eight action tools —
 which would have cost 776 bytes for a flag nobody changes between calls.
 
+v2.7.0 added `browser_find` on top of that, and paid for it the same way: the
+output-schema descriptions that merely restated their own property names
+(`elements`, `refMode`) went away.
+
 **The catalogue is now trimmed to the active preset.** `tools/list` returns
 only the tools the current preset exposes, and the server tells the host when
 that set changes. The default preset is `basic`, which saves about 6KB per
@@ -340,6 +348,20 @@ the set itself:
 ```json
 { "tool": "browser_config", "args": { "preset": "all" } }
 ```
+
+**How the preset decides.** Every tool declares the capability it belongs to,
+next to its own definition, and the preset is computed from those
+declarations. It used to be a hand-written list of tool _names_ per preset,
+which had to be kept in step with the catalogue by a test — it drifted once
+already and silently dropped six tools from the "all" preset, so an agent that
+asked for everything got a subset and never found out. There is now no second
+copy of the catalogue to drift.
+
+The capabilities are `core` (the everyday loop), `input` (fine-grained input
+and tab handling), `logs`, `assert` (`browser_verify` and `browser_find`),
+`cookie`, `firefox` (containers, extensions, request blocking,
+detectability) and `captcha`. `slim` is `core` alone; `basic` adds `input`,
+`logs`, `assert` and `cookie`; `developer` and `all` add the rest.
 
 **What was deliberately not done.** The catalogue is trimmed by PRESET, not per
 task: deciding which tools a particular task needs is a product decision, and a

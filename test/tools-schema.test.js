@@ -67,6 +67,7 @@ const EXPECTED_ORDER = [
   'browser_reload',
   'browser_set_viewport',
   'browser_verify',
+  'browser_find',
 ]
 
 describe('tool catalogue', () => {
@@ -183,6 +184,10 @@ describe('tool catalogue', () => {
     //     776 bytes for a flag nobody changes between calls.
     //
     // Measured after all of that: 33167 bytes for the full catalogue.
+    //
+    // The 2.7.0 work added `browser_find`, which paid for itself by
+    // trimming the same way: the output-schema descriptions that restated
+    // their own property names went away.
     const TOOL_PAYLOAD_BUDGET = 34000
     const payload = tools.map((t) => ({
       name: t.name,
@@ -204,7 +209,7 @@ describe('tool catalogue', () => {
     // point: a preset that grew back to the full catalogue would be a
     // silent regression of the thing this feature exists to deliver.
     //
-    // Measured at the time of writing: slim 17922 bytes, basic 27422.
+    // Measured at the time of writing: slim 17788 bytes, basic 28218.
     const BUDGETS = { slim: 20000, basic: 29000 }
     for (const [preset, budget] of Object.entries(BUDGETS)) {
       const names = new Set(presetTools(preset))

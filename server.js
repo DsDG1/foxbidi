@@ -27,7 +27,7 @@
 // and always returns a matching payload, on the error path too.
 
 import { getFirefoxProvider, resetFirefoxProvider } from './lib/firefox/provider.js'
-import { createTools } from './lib/mcp/tools/index.js'
+import { createTools, TOOL_ORDER } from './lib/mcp/tools/index.js'
 import { presetTools } from './lib/firefox/provider/workflow.js'
 import { toStructured, summarize, summarizeCaptcha, prettyJson } from './lib/mcp/schema.js'
 import { ERROR_CODES } from './lib/firefox/errors.js'
@@ -84,7 +84,7 @@ const provider = getFirefoxProvider({
 // ---------------------------------------------------------------------------
 
 const SERVER_NAME = 'firefox-browser'
-const SERVER_VERSION = '2.6.0'
+const SERVER_VERSION = '2.7.0'
 const LATEST_PROTOCOL_VERSION = '2025-11-25'
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 
@@ -147,6 +147,11 @@ const TOOLS = createTools({
   },
 })
 const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]))
+
+// The provider reports the effective tool set, and that report must be in
+// the CATALOGUE's order — the order the host injects, which is part of the
+// prompt cache. The provider does not know the catalogue, so it is told.
+provider._toolCatalogue = TOOL_ORDER
 
 /**
  * The twelve tools that existed before this version.
@@ -478,7 +483,7 @@ async function handleMessage(message) {
     case 'tools/list': {
       // The catalogue is trimmed to the current preset. `browser_config`
       // is always in the list, so the agent can widen it again.
-      const names = new Set(presetTools(provider.config_.preset))
+      const names = new Set(presetTools(provider.config_.preset, TOOL_ORDER))
       const visible = TOOLS.filter((t) => names.has(t.name))
       reply(id, {
         tools: visible.map((t) => ({
@@ -572,5 +577,5 @@ process.on('exit', () => {
 log(
   `ready — firefox=${FIREFOX_BROWSER_BIN || '(auto)'} port=${FIREFOX_BROWSER_PORT} ` +
     `headless=${FIREFOX_BROWSER_HEADLESS} tools=${TOOLS.length} ` +
-    `preset=${provider.config_.preset} visible=${presetTools(provider.config_.preset).length}`,
+    `preset=${provider.config_.preset} visible=${presetTools(provider.config_.preset, TOOL_ORDER).length}`,
 )
