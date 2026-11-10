@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import {
   classifyAction,
   classifyAccountChange,
+  classifyImplicitSubmit,
   evaluateGate,
   ACTION_KINDS,
 } from '../lib/firefox/confirm.js'
@@ -151,5 +152,106 @@ describe('evaluateGate', () => {
     const verdict = evaluateGate({ info: irreversible })
     assert.ok(verdict.hint)
     assert.match(verdict.hint, /example\.com/)
+  })
+})
+
+describe('implicit form submits', () => {
+  // Enter in a field, a <select> change and a radio toggle can all submit
+  // a form. Before this classifier existed, those three paths walked past
+  // the gate entirely — the agent could be blocked on `click` and then
+  // simply press Enter instead.
+
+  test('a control in no form is never irreversible', () => {
+    // The common case on the web, and the reason this rule produces
+    // almost no false positives.
+    const verdict = classifyImplicitSubmit(info({ formAction: null }))
+    assert.equal(verdict.irreversible, false)
+  })
+
+  test('a control in a form with a submit control is irreversible', () => {
+    // Enter activates the form's submit button in standard HTML.
+    const verdict = classifyImplicitSubmit(
+      info({
+        formAction: 'https://example.com/submit',
+        formMethod: 'get',
+        formHasSubmitControl: true,
+      }),
+    )
+    assert.equal(verdict.irreversible, true)
+    assert.equal(verdict.action, ACTION_KINDS.FORM_SUBMIT)
+  })
+
+  test('a control in a POST form is irreversible even without a submit control', () => {
+    const verdict = classifyImplicitSubmit(
+      info({
+        formAction: 'https://example.com/submit',
+        formMethod: 'post',
+        formHasSubmitControl: false,
+      }),
+    )
+    assert.equal(verdict.irreversible, true)
+    assert.equal(verdict.action, ACTION_KINDS.FORM_SUBMIT)
+  })
+
+  test('a submit control itself is irreversible', () => {
+    const verdict = classifyImplicitSubmit(
+      info({
+        formAction: 'https://example.com/submit',
+        formMethod: 'get',
+        isSubmit: true,
+      }),
+    )
+    assert.equal(verdict.irreversible, true)
+  })
+
+  test('a control in a form with NO submit control is not irreversible', () => {
+    // A GET form with no submit control: pressing Enter does nothing
+    // irreversible.
+    const verdict = classifyImplicitSubmit(
+      info({
+        formAction: 'https://example.com/search',
+        formMethod: 'get',
+        formHasSubmitControl: false,
+      }),
+    )
+    assert.equal(verdict.irreversible, false)
+  })
+
+  test('the implicit check does not fire unless it is asked for', () => {
+    const target = info({
+      formAction: 'https://example.com/submit',
+      formMethod: 'get',
+      formHasSubmitControl: true,
+    })
+    // Without `implicit`, the ordinary classification stands.
+    assert.equal(evaluateGate({ info: target }).allowed, true)
+    // With it, the implicit submit is caught.
+    assert.equal(evaluateGate({ info: target, implicit: true }).allowed, false)
+  })
+
+  test('the implicit check is bypassed by confirm: true', () => {
+    const target = info({
+      formAction: 'https://example.com/submit',
+      formMethod: 'get',
+      formHasSubmitControl: true,
+    })
+    const verdict = evaluateGate({ info: target, implicit: true, confirm: true })
+    assert.equal(verdict.allowed, true)
+  })
+
+  test('the refusal has the same shape as every other refusal', () => {
+    // The agent branches on this, so the shape must not vary by which
+    // action tripped the gate.
+    const target = info({
+      formAction: 'https://example.com/submit',
+      formMethod: 'get',
+      formHasSubmitControl: true,
+    })
+    const verdict = evaluateGate({ info: target, implicit: true })
+    assert.equal(verdict.allowed, false)
+    assert.equal(verdict.action, 'form_submit')
+    assert.equal(verdict.requiresConfirm, true)
+    assert.equal(verdict.code, 'confirm_required')
+    assert.ok(verdict.hint)
   })
 })

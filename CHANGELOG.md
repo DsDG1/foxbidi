@@ -7,7 +7,60 @@ versions follow `MAJOR.MINOR.PATCH`.
 
 ## Unreleased
 
-Nothing yet.
+安全性加固：修复三个已验证的漏洞，并补上四处纵深防御。**工具名、参数名、参数类型
+和顺序全部不变**，只新增了可选参数。
+
+### Fixed
+
+- **`browser_run_script` 的路径边界可被符号链接绕过** —— 检查用的是 `resolve()`，
+  它只规范化字符串、不碰文件系统，所以工作区里一个指向 `/etc/passwd` 的软链能通过
+  前缀比较，随后 `readFileSync` 跟着软链读了目标。现在**两侧都过 `realpathSync`**
+  再比较：工作区里的软链指向外部会被拒；工作区**本身**是软链仍然可用。
+  拒绝时不回显解析出的真实路径——那等于给攻击者一个探测探针。
+- **凭据出站通道未脱敏** —— 插件对网络 URL 做了严格脱敏（剥 query，因为 token 常在
+  那里），但 cookie 值、页面 console 日志、快照里的输入框值、响应体都是原样进上下文。
+  一个 `type=text` 的二次验证码框过去会被写进快照。现在所有通道共用
+  `lib/firefox/redact.js`：cookie 值变成 `<redacted:len=N>`，敏感字段值变成
+  `<redacted>` 并带 `valueRedacted:true`，日志和响应体里明确的 secret 形态被就地替换。
+  `revealValues` / `revealBody` 是显式逃生口。
+- **确认闸门可被绕过** —— 在表单输入框里按 Enter、改 `<select>`、切 radio，在标准
+  HTML 里都会提交表单，但这三条路径完全不过闸门：Agent 被 `click` 拦下，改按回车
+  就行。现在新增 `classifyImplicitSubmit`，按 DOM 事实（提交控件 / POST 表单 /
+  表单里有提交控件）判定，三个动作和 `browser_batch` 的对应步骤行为一致。
+  `press_key` 探测不到焦点时**保守拒绝**，因为无法证明安全。
+
+### Added
+
+- **导航策略** —— 浏览器带的是用户真实登录态，所以默认不导航到字面私网/环回地址
+  （`127.0.0.1`、`localhost`、`10.x`、`192.168.x`）或 `file:` / `data:` /
+  `javascript:`。返回 `code: "navigation_blocked"`。不做 DNS 解析（会引入 TOCTOU
+  与延迟），所以域名解析到私网的情况**不在此列**。
+- **动作审计** —— 每次工具调用写一条 JSONL 到插件数据目录的 `audit/<日期>.jsonl`：
+  做了什么、点了哪个控件、是否被拦。**不记录输入文本和 cookie 值。**
+  `browser_status` 报审计路径与会话计数。
+- **profile 副本生命周期** —— 副本不再永不过期：默认 24 小时（`FIREFOX_BROWSER_PROFILE_TTL_HOURS`）
+  后重建。副本内的凭据文件显式设为 `0600`（此前沿用源文件权限，`cookies.sqlite` 是
+  `0644`）。当前基目录下属于其他源 profile 的残留副本会被清理。
+- **截图 URL 过期** —— 截图 URL 要写进回复，会进对话记录。现在 1 小时后失效
+  （`FIREFOX_BROWSER_IMAGE_TTL_MS`），过期和不存在都回 404——响应不可区分。
+
+### Changed
+
+- **工具目录 33380 → 33595 字节**（+215）。新增五个可选参数（两个 reveal 标志、
+  三个 `confirm`）。共享的 `confirm` 参数描述被缩短来抵消大部分增量——它在注入的
+  目录里出现 9 次。
+- `REFERENCE.md` 的错误码表检测从"子串包含"升级为逐行匹配，防止表格行被截断
+  （`capability_unavailable` 曾被写成 `ability_unavailable` 却仍能通过测试）。
+
+### Environment
+
+| 变量                                  | 默认      | 含义                                   |
+| ------------------------------------- | --------- | -------------------------------------- |
+| `FIREFOX_BROWSER_PROFILE_TTL_HOURS`   | `24`      | profile 副本 TTL（小时）；`0` = 不过期 |
+| `FIREFOX_BROWSER_NAVIGATION_POLICY`   | `strict`  | `strict` / `permissive`                |
+| `FIREFOX_BROWSER_ALLOW_PRIVATE_HOSTS` | `0`       | `1` = 允许私网/环回 host               |
+| `FIREFOX_BROWSER_IMAGE_TTL_MS`        | `3600000` | 截图 token TTL；`0` = 不过期           |
+| `FIREFOX_BROWSER_AUDIT`               | `1`       | `0` = 关闭动作审计                     |
 
 ## v2.3.0 — 2026-11-09
 

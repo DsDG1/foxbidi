@@ -549,21 +549,44 @@ Layout:
 
 - The BiDi endpoint binds `127.0.0.1` and is reachable only from this machine.
 - The profile copy holds real cookies and saved passwords. It is created with
-  `0700`, is never served over HTTP, and is not part of the plugin package.
-  Delete the base directory to revoke it.
+  `0700`, the credential-bearing files inside it with `0600`, is never served
+  over HTTP, and is not part of the plugin package. Delete the base directory
+  to revoke it. The copy expires after 24 hours by default
+  (`FIREFOX_BROWSER_PROFILE_TTL_HOURS`) and is rebuilt from the source when
+  it does.
 - `browser_evaluate` executes arbitrary JavaScript in the page. It is exposed
   as a named, visible tool rather than a hidden escape hatch.
-- Password field values are never read into a snapshot.
+- **Every channel that carries raw page content is redacted** (see
+  `lib/firefox/redact.js`): cookie values, the page's console output, input
+  field values in a snapshot, and response bodies. A password, a one-time
+  code and a card number are all values a page can hold, and only a password
+  was covered before. `revealValues` / `revealBody` are the explicit escape
+  hatches.
 - Captured request URLs are stripped of their query string and fragment before
   they leave the plugin — query strings routinely carry session tokens. No
   headers, cookies or bodies are captured.
+- **The confirmation gate covers every path that can submit a form**, not
+  just a click on a submit button: pressing Enter in a field, changing a
+  `<select>` and toggling a radio can all submit one in standard HTML. The
+  gate decides on DOM facts — a submit control, a POST form, or a form that
+  has a submit control.
 - `browser_run_script` only reads scripts from the configured roots
-  (`~/.mavis/ff-workspace/` by default) and refuses anything that tries to
-  escape them. It executes them in the page, like `browser_evaluate`.
+  (`~/.mavis/ff-workspace/` by default). The check resolves every symbolic
+  link on both sides before comparing, so a link inside the workspace
+  pointing outside it is refused. It executes the script in the page, like
+  `browser_evaluate`.
+- **Navigation is restricted.** The browser carries the user's real login
+  state, so it will not navigate to a literal private address or `localhost`,
+  nor to `file:` / `data:` / `javascript:`. `FIREFOX_BROWSER_ALLOW_PRIVATE_HOSTS=1`
+  allows private hosts for local development. A hostname that resolves to a
+  private address is NOT covered — the policy does not resolve DNS.
+- **Every tool call is audited** to a per-day JSONL file under the plugin's
+  data directory: what was called, what it targeted, whether it was blocked.
+  Typed text and cookie values are never recorded.
 - `FIREFOX_BROWSER_PREFS` is applied to the profile **copy** only; the user's
   own profile is never modified.
 - The plugin opens no listening ports of its own, except the screenshot
   service described above: it binds `127.0.0.1` only, uses an OS-assigned
   port, serves nothing but PNGs whose token was actually published (anything
-  else is a 404), and is closed with its files deleted when the session
-  stops.
+  else is a 404), expires each URL after an hour, and is closed with its files
+  deleted when the session stops.

@@ -57,18 +57,37 @@ describe('snapshot helpers', () => {
   })
 
   test('the injected script never reads a password field value', () => {
-    // The value read must be guarded by the password role — a leaked
-    // password would be a serious defect, so the guard is asserted
-    // explicitly rather than left to inspection.
+    // The value read must be guarded — a leaked password would be a serious
+    // defect, so the guard is asserted explicitly rather than left to
+    // inspection.
+    //
+    // The guard is `isSensitiveField`, which is stricter than the old
+    // `role !== 'password'` check: it also covers one-time codes, card
+    // numbers and other fields that DECLARE themselves credentials.
     assert.ok(
-      SNAPSHOT_SCRIPT.includes("role !== 'password'"),
-      'the value read is not guarded by the password role',
+      SNAPSHOT_SCRIPT.includes('isSensitiveField(el)'),
+      'the value read is not guarded by isSensitiveField',
+    )
+    assert.ok(
+      LEGACY_SNAPSHOT_SCRIPT.includes('isSensitiveField(el)'),
+      'the legacy script reads a field value without the guard',
     )
     // The guard only means something if password inputs really do get that
     // role — otherwise it would be vacuously true.
     assert.ok(
       SNAPSHOT_SCRIPT.includes("return 'password'"),
       'password inputs are not assigned the password role',
+    )
+    // And the guard must actually recognise a password, by BOTH its type
+    // and its role. The guard lives in the page, so its rules are asserted
+    // on the injected source.
+    assert.ok(
+      SNAPSHOT_SCRIPT.includes("type === 'password'"),
+      'the field guard does not recognise a password input by type',
+    )
+    assert.ok(
+      SNAPSHOT_SCRIPT.includes("role === 'password'"),
+      'the field guard does not recognise a password input by role',
     )
   })
 

@@ -16,6 +16,13 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname } from 'node:path'
 
+import { relaxNavigationPolicy } from './fixtures.js'
+
+// These tests load their fixtures as data: URLs, which the navigation
+// policy blocks by default. The policy is relaxed for the whole file — the
+// tests are exercising the agent loop, not the policy.
+relaxNavigationPolicy()
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN_ROOT = resolve(HERE, '..', '..')
 const absPath = (rel) => pathToFileURL(resolve(PLUGIN_ROOT, rel)).href

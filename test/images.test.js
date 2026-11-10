@@ -85,4 +85,66 @@ describe('image server', () => {
     assert.equal(existsSync(dir), false)
     rmSync(dir, { recursive: true, force: true })
   })
+
+  test('an expired image is a 404, exactly like an unknown token', async () => {
+    // A screenshot URL travels through the model's reply, so it ends up in
+    // the conversation log. The TTL bounds how long it is worth.
+    //
+    // The response must be indistinguishable from an unknown token — a
+    // different answer would tell the caller "this existed but expired",
+    // which is itself a signal about what was on the screen.
+    const dir = tmp()
+    const server = new ImageServer({ dir, ttlMs: 60 * 60 * 1000 })
+    try {
+      const { url, token } = await server.publish(PNG)
+      const res = await fetch(url)
+      assert.equal(res.status, 200)
+
+      // Age the entry past its TTL.
+      const entry = server._files.get(token)
+      entry.expiresAt = Date.now() - 1000
+
+      const expired = await fetch(url)
+      assert.equal(expired.status, 404)
+      const body = await expired.text()
+      assert.equal(body, 'not found')
+
+      const unknown = await fetch(`http://127.0.0.1:${server._port}/i/not-a-real-token.png`)
+      assert.equal(unknown.status, 404)
+      assert.equal(await unknown.text(), body)
+    } finally {
+      await server.stop()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('a zero TTL means the images never expire', async () => {
+    const dir = tmp()
+    const server = new ImageServer({ dir, ttlMs: 0 })
+    try {
+      const { url, token } = await server.publish(PNG)
+      // With no TTL there is no expiry to record, so the entry can never
+      // expire — not even if the clock moves.
+      assert.equal(server._files.get(token).expiresAt, null)
+      const res = await fetch(url)
+      assert.equal(res.status, 200)
+    } finally {
+      await server.stop()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('the expired images are swept when a new one is published', async () => {
+    const dir = tmp()
+    const server = new ImageServer({ dir, ttlMs: 1000 })
+    try {
+      const first = await server.publish(PNG)
+      server._files.get(first.token).expiresAt = Date.now() - 1000
+      await server.publish(PNG)
+      assert.equal(server._files.has(first.token), false)
+    } finally {
+      await server.stop()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

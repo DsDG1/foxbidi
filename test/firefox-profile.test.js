@@ -6,7 +6,17 @@
 
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, symlinkSync, existsSync } from 'node:fs'
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+  existsSync,
+  chmodSync,
+  statSync,
+  utimesSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -23,6 +33,9 @@ const {
   ensureProfileCopy,
   removeProfileCopy,
   profileCopyPath,
+  profileCopyTtlHours,
+  isProfileCopyExpired,
+  removeStaleProfileCopies,
 } = await import(absPath('lib/firefox/profile.js'))
 
 let tmpRoot
@@ -209,6 +222,31 @@ describe('profile.copyProfile', () => {
     assert.equal(res.ok, false)
     assert.match(res.error, /not found/)
   })
+
+  test('the credential files are owner-only', () => {
+    // The copy holds live cookies and the encrypted password database.
+    // The DIRECTORY is 0700, but `copyFileSync` preserved the source
+    // modes — which put cookies.sqlite at 0644 and logins.json at 0664.
+    // The directory blocks traversal today; the file mode is what
+    // protects a copy that is archived, synced or moved.
+    const src = mkdtempSync(join(tmpRoot, 'src-perm-'))
+    writeFileSync(join(src, 'cookies.sqlite'), 'c')
+    writeFileSync(join(src, 'key4.db'), 'k')
+    writeFileSync(join(src, 'logins.json'), '{}')
+    chmodSync(join(src, 'cookies.sqlite'), 0o644)
+    chmodSync(join(src, 'logins.json'), 0o664)
+    const dest = join(tmpRoot, 'dest-perm')
+
+    const res = copyProfile(src, dest)
+    assert.equal(res.ok, true)
+
+    const mode = (p) => statSync(p).mode & 0o777
+    assert.equal(mode(join(dest, 'cookies.sqlite')), 0o600)
+    assert.equal(mode(join(dest, 'key4.db')), 0o600)
+    assert.equal(mode(join(dest, 'logins.json')), 0o600)
+    // The directory itself stays owner-only.
+    assert.equal(mode(dest), 0o700)
+  })
 })
 
 describe('profile.ensureProfileCopy', () => {
@@ -283,5 +321,83 @@ describe('profile helpers', () => {
     const res = removeProfileCopy(dir)
     assert.equal(res.ok, true)
     assert.equal(existsSync(dir), false)
+  })
+
+  test('the copy TTL defaults to 24 hours', () => {
+    assert.equal(profileCopyTtlHours({}), 24)
+  })
+
+  test('the copy TTL is configurable and 0 disables it', () => {
+    assert.equal(profileCopyTtlHours({ FIREFOX_BROWSER_PROFILE_TTL_HOURS: '4' }), 4)
+    assert.equal(profileCopyTtlHours({ FIREFOX_BROWSER_PROFILE_TTL_HOURS: '0' }), 0)
+  })
+
+  test('a nonsense TTL falls back to the default', () => {
+    assert.equal(profileCopyTtlHours({ FIREFOX_BROWSER_PROFILE_TTL_HOURS: 'abc' }), 24)
+    assert.equal(profileCopyTtlHours({ FIREFOX_BROWSER_PROFILE_TTL_HOURS: '-5' }), 24)
+  })
+
+  test('an old copy is expired and a fresh one is not', () => {
+    const dir = join(tmpRoot, 'ttl-dir')
+    mkdirSync(dir, { recursive: true })
+    // Two days old.
+    const old = new Date(Date.now() - 2 * 24 * 3600 * 1000)
+    utimesSync(dir, old, old)
+    assert.equal(isProfileCopyExpired(dir, { FIREFOX_BROWSER_PROFILE_TTL_HOURS: '24' }), true)
+    assert.equal(isProfileCopyExpired(dir, { FIREFOX_BROWSER_PROFILE_TTL_HOURS: '0' }), false)
+    assert.equal(isProfileCopyExpired(dir, { FIREFOX_BROWSER_PROFILE_TTL_HOURS: '168' }), false)
+  })
+
+  test('an expired copy is rebuilt rather than reused', () => {
+    const src = mkdtempSync(join(tmpRoot, 'ttl-src-'))
+    writeFileSync(join(src, 'cookies.sqlite'), 'c')
+    const dest = join(tmpRoot, 'ttl-dest')
+
+    const first = ensureProfileCopy({ srcDir: src, destDir: dest })
+    assert.equal(first.ok, true)
+    assert.equal(first.refreshed, true)
+
+    // A second call reuses it — the source has not changed.
+    const second = ensureProfileCopy({ srcDir: src, destDir: dest })
+    assert.equal(second.refreshed, false)
+
+    // Now age the copy past its TTL.
+    const old = new Date(Date.now() - 2 * 24 * 3600 * 1000)
+    utimesSync(dest, old, old)
+
+    const third = ensureProfileCopy({
+      srcDir: src,
+      destDir: dest,
+      env: { FIREFOX_BROWSER_PROFILE_TTL_HOURS: '24' },
+    })
+    assert.equal(third.ok, true)
+    assert.equal(third.refreshed, true, 'an expired copy must be rebuilt, not reused')
+  })
+
+  test('copies for other source profiles are removed from the base directory', () => {
+    const base = join(tmpRoot, 'stale-base')
+    mkdirSync(base, { recursive: true })
+    const keep = join(base, 'profile-keep')
+    const stale = join(base, 'profile-stale')
+    mkdirSync(keep)
+    mkdirSync(stale)
+    writeFileSync(join(stale, 'cookies.sqlite'), 'c')
+
+    const removed = removeStaleProfileCopies(base, keep)
+    assert.equal(removed.length, 1)
+    assert.equal(existsSync(stale), false)
+    assert.equal(existsSync(keep), true, 'the copy in use must survive')
+  })
+
+  test('the cleanup only touches profile-* directories', () => {
+    const base = join(tmpRoot, 'stale-base-2')
+    mkdirSync(base, { recursive: true })
+    const keep = join(base, 'profile-keep')
+    mkdirSync(keep)
+    const other = join(base, 'not-a-profile')
+    mkdirSync(other)
+
+    removeStaleProfileCopies(base, keep)
+    assert.equal(existsSync(other), true)
   })
 })

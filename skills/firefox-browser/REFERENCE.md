@@ -16,7 +16,7 @@
 
 - `browser_snapshot` — `maxElements`（默认 300，上限 5000）、`offset`（配返回的 `nextOffset` 翻页）、`roleFilter`（如 `["button","link"]`）、`nameContains`（按无障碍名过滤）、`includeText`（附带可见文本块）、`frames: "all"`（连 iframe 内容一起快照，refs 带 frame 前缀）。
 - `browser_text` — `maxChars`（默认 8000）、`offset`（字符偏移）、`selector`（只读某个元素）。
-- `browser_network` — `status`（如 `["4xx","5xx","error"]`）、`types`（如 `["xhr","fetch"]`）、`filter`（URL 子串）、`afterSeq`（只看更新的请求）、`limit`（默认 50）、`requestId` + `bodyType`（取响应体，Firefox 144+）。
+- `browser_network` — `status`（如 `["4xx","5xx","error"]`）、`types`（如 `["xhr","fetch"]`）、`filter`（URL 子串）、`afterSeq`（只看更新的请求）、`limit`（默认 50）、`requestId` + `bodyType`（取响应体，Firefox 144+）。**响应体默认脱敏**（只替换明确的 secret 形态）；要原样传 `revealBody: true`。
 - `browser_logs` — `channel`（`console` / `plugin` / `bidi` / `all`）、`levels`、`filter`、`limit`。
 - `browser_evaluate` — `expression` 在页面上下文执行，返回其值。
 - `browser_screenshot` — `fullPage`（整篇文档而不是视口）、`elementRef`（只截某个快照 ref）。
@@ -25,8 +25,9 @@
 
 - `browser_click` — `button`（0 左键 / 1 中键 / 2 右键）、`clickCount`（双击填 2）。
 - `browser_type` — `text` 必填；`clear` 先清空；`submit` 打完回车（可能提交表单，要 `confirm`）。
-- `browser_select_option` — `value` 可传值或可见文本；`byText: true` 按可见文本匹配。
-- `browser_check` — `checked` 为 `true` 勾选、`false` 取消。
+- `browser_select_option` — `value` 可传值或可见文本；`byText: true` 按可见文本匹配。改 `<select>` 可能隐式提交表单，**要 `confirm`**。
+- `browser_check` — `checked` 为 `true` 勾选、`false` 取消。切 radio 可能隐式提交表单，**要 `confirm`**。
+- `browser_press_key` — `key` 如 `"Enter"` / `"Ctrl+Enter"`。**在表单输入框里按 Enter 会提交表单，要 `confirm`**；焦点探测不到时保守拒绝（也要 confirm）。
 - `browser_hover` — 只移动指针，不点击。
 - `browser_scroll` — `direction`（`up`/`down`/`top`/`bottom`）、`amount`（像素，默认 400）；给了 `ref`/`selector` 就是滚动到该元素。
 - `browser_upload` — `paths` 绝对路径数组；**不可逆，要 `confirm`**。
@@ -49,7 +50,7 @@
 
 - `browser_context` — `action` 为 `list`/`create`/`select`/`remove`，配 `userContext`、`label`、`url`。
 - `browser_extension` — `action` 为 `install`/`uninstall`/`list`，配 `path`（解包目录或 XPI）、`extensionId`、`permanent`（Firefox 138+ 才支持永久安装；更早版本默认临时安装）。
-- `browser_cookie` — `action` 为 `get`/`set`；`filter` 如 `{"domain":"example.com"}`，`cookie` 如 `{"name":"sid","value":"x"}`。能读写 HttpOnly cookie（Firefox 124+）。
+- `browser_cookie` — `action` 为 `get`/`set`；`filter` 如 `{"domain":"example.com"}`，`cookie` 如 `{"name":"sid","value":"x"}`。能读写 HttpOnly cookie（Firefox 124+）。**`get` 的值默认脱敏成 `<redacted:len=N>`**；要原值传 `revealValues: true`。`set` 是不可逆写入，**要 `confirm`**。
 - `browser_intercept` — `action` 为 `block`/`clear`，`patterns` 是 URL 子串数组。命中后请求被插件拦下再放行，页面不会卡死。
 - `browser_detectability` — 只读，实测本会话有多容易被检测。
 
@@ -63,21 +64,22 @@
 失败时结果里同时有两个字段：`code` 是机器可读的固定词表，`error` 是给人看的原话。
 分支逻辑请用 `code`，给用户的解释请用 `error`。
 
-| code                     | 含义                                     |
-| ------------------------ | ---------------------------------------- |
-| `not_running`            | 浏览器没起来                             |
-| `no_context`             | 没有可用的标签页                         |
-| `element_not_found`      | 选择器/ref 没匹配到任何东西              |
-| `element_not_actionable` | 元素在，但用不了（隐藏、禁用、类型不对） |
-| `ref_stale`              | 元素引用已过期，重新 `browser_snapshot`  |
-| `frame_gone`             | 目标 iframe 已经不在了                   |
-| `capability_unavailable` | 这版 Firefox 不支持该能力                |
-| `confirm_required`       | 不可逆动作被拦下，需要 `confirm: true`   |
-| `invalid_argument`       | 参数不合法（包括历史到头）               |
-| `timeout`                | 等待超时                                 |
-| `network_error`          | 请求本身失败                             |
-| `path_not_allowed`       | 文件路径不在允许的目录里                 |
-| `unknown_tool`           | MCP 层被要求调用一个不存在的工具         |
-| `internal`               | 插件内部错误                             |
+| code                     | 含义                                      |
+| ------------------------ | ----------------------------------------- |
+| `not_running`            | 浏览器没起来                              |
+| `no_context`             | 没有可用的标签页                          |
+| `element_not_found`      | 选择器/ref 没匹配到任何东西               |
+| `element_not_actionable` | 元素在，但用不了（隐藏、禁用、类型不对）  |
+| `ref_stale`              | 元素引用已过期，重新 `browser_snapshot`   |
+| `frame_gone`             | 目标 iframe 已经不在了                    |
+| `capability_unavailable` | 这版 Firefox 不支持该能力                 |
+| `confirm_required`       | 不可逆动作被拦下，需要 `confirm: true`    |
+| `invalid_argument`       | 参数不合法（包括历史到头）                |
+| `timeout`                | 等待超时                                  |
+| `network_error`          | 请求本身失败                              |
+| `path_not_allowed`       | 文件路径不在允许的目录里                  |
+| `navigation_blocked`     | 这个 URL 不允许访问（私网地址、file: 等） |
+| `unknown_tool`           | MCP 层被要求调用一个不存在的工具          |
+| `internal`               | 插件内部错误                              |
 
 `hint` 字段会说明下一步该做什么。

@@ -8,7 +8,10 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { FirefoxProvider, scriptRoots, presetTools } from '../lib/firefox/provider.js'
+import { resolveScriptPath } from '../lib/firefox/provider/workflow.js'
 import { join } from 'node:path'
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 /**
  * A provider whose browser-facing methods are stubbed.
@@ -155,6 +158,97 @@ describe('browser_run_script path guard', () => {
     const result = await provider.runScript(join(root, 'does-not-exist.js'))
     assert.equal(result.ok, false)
     assert.match(result.error, /cannot read script/)
+  })
+
+  test('a SYMLINK inside the workspace that points outside it is refused', async () => {
+    // THE REGRESSION TEST FOR THE PATH-BOUNDARY FIX.
+    //
+    // `resolve()` is a string operation: it normalises `..` but never
+    // touches the filesystem, so a symlink inside an allowed root still
+    // "looks" like it is inside that root. Before the fix, a link in the
+    // workspace pointing at /etc/passwd passed the prefix check, and the
+    // subsequent read followed it.
+    const dir = mkdtempSync(join(tmpdir(), 'ffb-symlink-'))
+    try {
+      const outside = join(dir, 'secret.txt')
+      writeFileSync(outside, 'SECRET-CONTENT')
+      const root = join(dir, 'root')
+      mkdirSync(root)
+      const link = join(root, 'evil.js')
+      symlinkSync(outside, link)
+
+      // The link itself is inside the allowed root...
+      assert.ok(link.startsWith(root + '/'))
+      // ...but it resolves outside it.
+      const real = realpathSync(link)
+      assert.ok(!real.startsWith(root + '/'))
+
+      const allowed = [root]
+      const verdict = resolveScriptPath(link, allowed)
+      assert.equal(verdict.ok, false)
+      assert.equal(verdict.reason, 'not_allowed')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('the refusal does not echo where the link pointed', async () => {
+    // Telling the caller where the symlink resolves to would hand it a
+    // probe oracle for the filesystem.
+    const dir = mkdtempSync(join(tmpdir(), 'ffb-symlink-'))
+    try {
+      const outside = join(dir, 'secret.txt')
+      writeFileSync(outside, 'SECRET-CONTENT')
+      const root = join(dir, 'root')
+      mkdirSync(root)
+      const link = join(root, 'evil.js')
+      symlinkSync(outside, link)
+
+      const verdict = resolveScriptPath(link, [root])
+      assert.equal(verdict.ok, false)
+      assert.ok(!JSON.stringify(verdict).includes('secret.txt'))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('a script INSIDE the workspace is still allowed', async () => {
+    // The fix must not break the feature it protects.
+    const dir = mkdtempSync(join(tmpdir(), 'ffb-symlink-'))
+    try {
+      const root = join(dir, 'root')
+      mkdirSync(root)
+      const script = join(root, 'helper.js')
+      writeFileSync(script, 'return { ok: true }')
+
+      const verdict = resolveScriptPath(script, [root])
+      assert.equal(verdict.ok, true)
+      assert.equal(verdict.path, realpathSync(script))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('a workspace that is ITSELF a symlink still works', async () => {
+    // Users legitimately symlink the workspace somewhere else. The root
+    // is realpath'd too, so a symlinked ROOT is fine — it is a symlinked
+    // FILE inside the root that is not.
+    const dir = mkdtempSync(join(tmpdir(), 'ffb-symlink-'))
+    try {
+      const real = join(dir, 'real-root')
+      mkdirSync(real)
+      const script = join(real, 'helper.js')
+      writeFileSync(script, 'return { ok: true }')
+
+      const linkedRoot = join(dir, 'linked-root')
+      symlinkSync(real, linkedRoot)
+      const viaLink = join(linkedRoot, 'helper.js')
+
+      const verdict = resolveScriptPath(viaLink, [linkedRoot])
+      assert.equal(verdict.ok, true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

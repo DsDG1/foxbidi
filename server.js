@@ -412,6 +412,15 @@ async function callTool(name, args) {
     )
   }
 
+  // The action audit trail. This browser carries the user's real login
+  // state, so what the agent DID is worth recording on disk. The audit
+  // never records typed text or cookie values — see lib/firefox/audit.js.
+  try {
+    provider.recordAudit(name, result)
+  } catch {
+    /* the audit must never break a tool call */
+  }
+
   return toToolResult(result, tool)
 }
 

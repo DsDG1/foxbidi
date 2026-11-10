@@ -129,6 +129,44 @@ BiDi 命令超时——**但页面其实已经加载好了**。
 
 上传本地文件是不可逆动作，**必须** `confirm: true`。这是设计如此，不是 bug。
 
+## "cookie 值怎么是 `<redacted>`"
+
+这是设计如此。插件对所有出站通道统一脱敏——这个浏览器带的是用户**真实登录态**，
+cookie 值就是会话凭据，默认不交给模型。
+
+要原值，显式声明：`browser_cookie({action:"get", revealValues:true})`。
+需要的话还有 `browser_network({requestId, revealBody:true})`。
+
+快照里 `autocomplete="one-time-code"`、名字像 `otp`/`token`/`验证码` 的字段同理：
+值是 `<redacted>`，并带 `valueRedacted:true`——**你知道那里有东西，但拿不到内容**。
+需要时请用户自己读，不要绕。
+
+## "改 select / 按回车被拦了"
+
+闸门拦的是**不可逆动作**，不是特定工具名。在表单输入框里按 Enter、改 `<select>`、
+切 radio，在标准 HTML 里都会提交表单——所以这三样和点击提交按钮一样要 `confirm: true`。
+
+看返回的 `hint` 确认是什么表单、什么 action，然后加 `confirm: true` 重试同一个调用。
+不在表单里的 select / radio 不受影响。
+
+## "导航被拒了"
+
+`code: "navigation_blocked"`。这个浏览器带真实登录态，所以默认不去私网/环回地址
+（`127.0.0.1`、`localhost`、`10.x`、`192.168.x`），也不去 `file:`/`data:`/`javascript:`——
+这些是机器上你访问不到、但浏览器能访问的地方。
+
+本地开发调试用 `FIREFOX_BROWSER_ALLOW_PRIVATE_HOSTS=1`；
+完全放开用 `FIREFOX_BROWSER_NAVIGATION_POLICY=permissive`。
+
+注意：**域名解析到私网的情况不在此列**——策略不做 DNS 解析。
+
+## "browser_run_script 说路径不在允许目录"
+
+路径检查按**软链解析后的真实路径**判定。`~/.mavis/ff-workspace/` 里放一个指向
+外部的软链会被拒（这是有意的：软链可以指到 `~/.ssh/id_rsa`）。
+
+把脚本真正放进允许目录即可。允许目录**本身**是软链没关系。
+
 ## "这个站点知道我在自动化"
 
 大概率知道。Firefox 只要 Remote Agent 在跑，`navigator.webdriver` 就是 `true`，

@@ -165,12 +165,43 @@ describe('the documented error vocabulary', () => {
     // The agent reads the skill, not the source. If a code exists but is
     // undocumented, the agent cannot branch on it — so the table in
     // REFERENCE.md is checked against the table in the source.
+    //
+    // The check is per LINE, not a substring search. A substring search
+    // passes for a code that appears anywhere in the file — including
+    // inside another code's name, or in prose — so a mangled table row
+    // can slip through. The table row must name the code exactly.
     const reference = readFileSync(
       new URL('../skills/firefox-browser/REFERENCE.md', import.meta.url),
       'utf8',
     )
     for (const code of Object.values(ERROR_CODES)) {
-      assert.ok(reference.includes(code), `the reference does not document the "${code}" code`)
+      const documented = reference.split('\n').some((line) => line.includes(`\`${code}\``))
+      assert.ok(documented, `the reference does not document the "${code}" code`)
+    }
+  })
+
+  test('the reference table has no mangled rows', () => {
+    // A row whose code was truncated still "contains" the code elsewhere in
+    // the file, so the per-code check above would not catch it. The table
+    // is checked structurally instead: every row in the code table names a
+    // code that exists.
+    const reference = readFileSync(
+      new URL('../skills/firefox-browser/REFERENCE.md', import.meta.url),
+      'utf8',
+    )
+    const table = reference
+      .split('\n')
+      .filter((line) => line.startsWith('| `'))
+      .map((line) => {
+        const m = line.match(/^\|\s*`([^`]+)`/)
+        return m ? m[1] : null
+      })
+      .filter(Boolean)
+    for (const code of table) {
+      assert.ok(
+        Object.values(ERROR_CODES).includes(code),
+        `the reference documents an unknown code: "${code}"`,
+      )
     }
   })
 

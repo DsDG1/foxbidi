@@ -18,6 +18,13 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname } from 'node:path'
 
+import { relaxNavigationPolicy } from './fixtures.js'
+
+// These tests load their fixtures as data: URLs, which the navigation
+// policy blocks by default. The policy is relaxed for the whole file — the
+// tests are exercising the agent loop, not the policy.
+relaxNavigationPolicy()
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN_ROOT = resolve(HERE, '..', '..')
 const absPath = (rel) => pathToFileURL(resolve(PLUGIN_ROOT, rel)).href
@@ -200,7 +207,20 @@ describe('Firefox-only capabilities (live browser)', { skip }, () => {
     })
     assert.equal(read.ok, true, read.error)
     assert.equal(read.cookies.length, 1)
-    assert.equal(read.cookies[0].value, 'container', 'the cookie value must be readable')
+    // The value is REDACTED by default — a cookie value is a credential,
+    // and this browser carries the user's real login state.
+    assert.equal(read.cookies[0].valueRedacted, true)
+    assert.ok(!read.cookies[0].value.includes('container'))
+    assert.equal(read.cookies[0].name, 'ffb_isolation')
+
+    // The explicit escape hatch returns the raw value.
+    const revealed = await provider.cookie({
+      action: 'get',
+      filter: { name: 'ffb_isolation' },
+      revealValues: true,
+    })
+    assert.equal(revealed.ok, true, revealed.error)
+    assert.equal(revealed.cookies[0].value, 'container', 'the cookie value must be readable')
 
     const removed = await provider.userContext({
       action: 'remove',

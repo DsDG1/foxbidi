@@ -14,9 +14,7 @@ description: 用真实 Firefox 浏览网页并执行交互动作（打开链接�
 | **本 Skill 的 Firefox**（默认） | 插件复制的用户 profile，完整登录态，真实 Firefox 内核 | **默认都用它。** 任何网页浏览/交互任务                       |
 | **宿主内置浏览器**              | `mcp_browser` 控制的宿主浏览器面板                    | 用户明确说"当前浏览器 / 右侧那个 / 内置浏览器 / browser use" |
 
-判据：**默认 Firefox。** 它带用户真实登录态，且只有它能跑 Firefox。
-内置浏览器走 Chromium 路线（同样带登录态），但**驱动不了 Firefox**——Firefox 没有 CDP。
-**两个表面的登录态、cookie、标签页互不相通。** 需要换表面时用 `browser_handoff`。
+判据：**默认 Firefox。** 它带用户真实登录态，且只有它能跑 Firefox。内置浏览器走 Chromium 路线（同样带登录态），但**驱动不了 Firefox**——Firefox 没有 CDP。**两个表面的登录态、cookie、标签页互不相通。** 需要换表面时用 `browser_handoff`。
 
 ## 核心工作流
 
@@ -56,9 +54,7 @@ description: 用真实 Firefox 浏览网页并执行交互动作（打开链接�
 | `includeText: true`             | 顺便返回可见文本块，省一次 browser_text                        |
 | `frames: "all"`                 | 连 iframe 内容一起快照，iframe 里的 ref 带帧前缀 `fxxxxxxx:e0` |
 
-快照**能穿透 open shadow root**（web component 里的控件能点到）；closed shadow root 平台层面进不去。
-
-ref **不写进 DOM**——映射存在页面里一个不可枚举属性上，页面看不到痕迹。所以**别再用 `document.querySelectorAll('[data-mavis-ff-ref]')` 找元素**，那个属性已经不存在了。
+快照**能穿透 open shadow root**；closed shadow root 平台层面进不去。ref **不写进 DOM**（映射在页面里一个不可枚举属性上），所以**别再用 `document.querySelectorAll('[data-mavis-ff-ref]')` 找元素**，那个属性已经不存在了。
 
 ## 动作
 
@@ -76,7 +72,7 @@ ref **不写进 DOM**——映射存在页面里一个不可枚举属性上，�
 
 ### 沉淀 helper（browser-harness 模式）
 
-重复的操作不要每次重新摸索。写成脚本存到 `~/.mavis/ff-workspace/`，之后用 `browser_run_script` 跑。脚本体是一个接收 `args` 的函数，返回值会回传；只允许读 `~/.mavis/ff-workspace/` 下的文件。
+重复的操作不要每次重新摸索。写成脚本存到 `~/.mavis/ff-workspace/`，之后用 `browser_run_script` 跑。脚本体是一个接收 `args` 的函数，返回值会回传；只允许读 `~/.mavis/ff-workspace/` 下的文件（路径按软链解析后的真实路径判定）。
 
 ```js
 // ~/.mavis/ff-workspace/expand-row.js
@@ -91,7 +87,7 @@ return (args) => {
 
 页面弹 `alert()` / `confirm()` / `prompt()` / `beforeunload` 时**会阻塞页面**——后续所有命令都会卡住。插件会**自动关掉**它，并把弹窗内容放进上一个动作的 `effect.dialog`（`{type, message, handled}`）。
 
-看到 `effect.dialog` 就知道刚才有个框被关掉了。想自己答就用 `browser_handle_dialog`：`action: "accept"` / `"dismiss"` / `"acceptWithText"`（后者带 `text`）。想让弹窗保持打开（自己决定何时答）：`browser_config({dialogPolicy: "manual"})`。
+看到 `effect.dialog` 就知道刚才有个框被关掉了。想自己答就用 `browser_handle_dialog`：`action: "accept"` / `"dismiss"` / `"acceptWithText"`（后者带 `text`）。想让弹窗保持打开：`browser_config({dialogPolicy: "manual"})`。
 
 **注意**：弹窗是页面自己的对话框，不走确认闸门；但如果它说"确定支付"，应该先把情况告诉用户。
 
@@ -114,7 +110,7 @@ return (args) => {
 
 ## 反检测：能做什么，不能做什么
 
-**能**：快照不再往 DOM 写属性（最大的痕迹没了）；注册表键随机且不可枚举。**不能**：Firefox 只要 Remote Agent 在跑，`navigator.webdriver` 就是 `true`，**没有任何 pref 或启动参数能关掉它**——这是 Firefox 用 BiDi 的既定代价。所以**别说"隐身"**。要事实就调 `browser_detectability`，它会实测并如实报告（包括 `window` 上还能不能被 `getOwnPropertyNames` 找到注册表键）。
+**能**：快照不再往 DOM 写属性（最大的痕迹没了）；注册表键随机且不可枚举。**不能**：Firefox 只要 Remote Agent 在跑，`navigator.webdriver` 就是 `true`，**没有任何 pref 或启动参数能关掉它**——这是 Firefox 用 BiDi 的既定代价。所以**别说"隐身"**。要事实就调 `browser_detectability`，它会实测并如实报告。
 
 ## 验证码（可选能力）
 
@@ -122,7 +118,7 @@ return (args) => {
 
 **成功判据是站点发放的 token，不是"点中了"**：`ok:true` 只在 token 长度 > 0 时返回，否则 `ok:false` + `status`。插件**不含任何模型**：音频挑战要你指一个 Whisper 兼容服务（`sttUrl`），没有就报 `stt_unavailable`；图片九宫格默认不支持（可传 `visionUrl`）。**缺服务就报错，绝不假装成功。**
 
-支持状态：Turnstile ✅ 已端到端验证；**百度旋转验证码（`spin`，"拖动左侧滑块使图片为正"）✅ 已端到端验证**——它不发放 token，成功判据是服务端对 `POST /cap/log` 的回答 `data.op ∈ {1,2}`（`spin` 是唯一例外，`ok:true` 即表示服务端已接受角度）；reCAPTCHA v2 / hCaptcha / GeeTest 滑块 / PoW ⚠ 未在本机端到端验证（本机访问不到 google.com，GeeTest demo 在 headless 下不渲染 canvas）。代价要如实说：checkbox 在 **closed shadow root** 里，插件会 patch `attachShadow`，页面**理论上能观测到**；`navigator.webdriver` 仍是 `true`（`spin` 求解时会在页面内临时把这个 getter 覆盖成 `false`，但这只是降低风控概率，不是隐身）。不支持 reCAPTCHA v3、hCaptcha 九宫格、腾讯/网易/阿里滑块、付费 API。细节见 `docs/captcha.md`。
+已端到端验证：Turnstile、百度旋转验证码（`spin`，成功判据是服务端 `POST /cap/log` 回 `data.op ∈ {1,2}`）。未在本机验证：reCAPTCHA v2 / hCaptcha / GeeTest / PoW。不支持 reCAPTCHA v3、hCaptcha 九宫格、腾讯/网易/阿里滑块、付费 API。细节见 `docs/captcha.md`。
 
 ## 不可逆动作需要确认
 
@@ -130,12 +126,27 @@ return (args) => {
 
 判断依据是 **DOM 事实**，不是按钮文字：提交控件、POST 表单、`download` 属性、文件输入框、跨域 POST 且字段名像账号信息。中文站的"确认"、英文站的"OK"不会误触发。
 
+**闸门覆盖所有能提交表单的路径**，不只是点击：在表单输入框里按 `Enter`、改 `<select>`、切 radio 都会隐式提交，所以 `browser_press_key` / `browser_select_option` / `browser_check` 同样要 `confirm: true`。**别换条路绕过它**——那不是聪明，是漏洞。
+
+## 脱敏：默认看不见凭据
+
+这个浏览器带的是用户**真实登录态**，所以插件对所有出站通道统一脱敏（cookie 值、页面 console 日志、快照里的输入框值、响应体）：
+
+- `browser_cookie` 默认只给 cookie 的**身份**（名字/域/路径），值是 `<redacted:len=N>`。真要原值：`browser_cookie({action:"get", revealValues:true})`。
+- 快照里 `type=password`、`autocomplete="one-time-code"`、名字像 `otp`/`token`/`card`/`验证码`/`密码` 的字段，值是 `<redacted>` 并带 `valueRedacted:true`——**你知道那里有东西，但拿不到内容**。真要原值请用户自己读，别绕过。
+- console 日志和响应体里的 token/JWT/`Bearer` 会被就地替换，句子其余部分照常可读。响应体要原样：`browser_network({requestId, revealBody:true})`。
+
+**这是默认行为，不是故障。** 看到 `<redacted>` 不要重试到拿到为止。
+
+## 导航策略与审计
+
+导航默认拒绝私网/环回地址（`127.0.0.1`、`localhost`、`10.x`、`192.168.x`）和 `file:`/`data:` 等 scheme——带真实登录态的浏览器能访问机器上你访问不到的服务。被拒时返回 `code: "navigation_blocked"`。需要调本地开发服务：`FIREFOX_BROWSER_ALLOW_PRIVATE_HOSTS=1`。
+
+每次工具调用都写一条审计到 `<插件数据目录>/audit/<日期>.jsonl`：做了什么、点了哪个控件、是否被拦。**审计不记录输入文本和 cookie 值**。路径见 `browser_status` 的 `audit` 字段。
+
 ## 在两个浏览器之间交接
 
-`browser_handoff` 负责搬页面。
-
-- **Firefox → 内置浏览器**：只读。`{ "to": "in-app" }` 返回 URL 和引导，然后用宿主内置浏览器打开继续。`carry: "url+summary"` 还会带上当前页可交互元素摘要。
-- **内置浏览器 → Firefox**：有动作。先从内置浏览器读出 URL，再 `{ "to": "firefox", "url": "..." }`，插件会真的导航并回报 `effect`（含 `verified`）。
+`browser_handoff` 负责搬页面。**Firefox → 内置浏览器**：只读，`{ "to": "in-app" }` 返回 URL 和引导（`carry: "url+summary"` 还会带上当前页可交互元素摘要）。**内置浏览器 → Firefox**：有动作，`{ "to": "firefox", "url": "..." }` 会真的导航并回报 `effect`（含 `verified`）。
 
 **不共享状态**：交接过去的只是 URL。登录态、cookie、标签页都留在原表面。需要 Firefox 的登录态就往 Firefox 交。
 
@@ -143,20 +154,11 @@ return (args) => {
 
 `browser_screenshot` 会返回一个 **`imageUrl`**——插件在 `127.0.0.1` 上用一个小 HTTP 服务托管这张截图。如果用户是在 webui（浏览器里的聊天界面）里对话，把这个 URL 以 markdown 图片写进回复：`![页面截图](http://127.0.0.1:54321/i/xxxxxxxx.png)`。
 
-**不要把 base64 写进回复**——图片字节留在 URL 后面，模型上下文里只有一个短 URL。图片服务只监听 `127.0.0.1`；从另一台设备经局域网打开 webui 时 `127.0.0.1` 指向那台设备自己，图片会显示不出来——这种情况改用文字描述。
+**不要把 base64 写进回复**——图片字节留在 URL 后面，模型上下文里只有一个短 URL。图片服务只监听 `127.0.0.1`，URL 带 192-bit 随机 token，**1 小时后失效**（过期和不存在都回 404）。从另一台设备经局域网打开 webui 时 `127.0.0.1` 指向那台设备自己，图片会显示不出来——这种情况改用文字描述。
 
 ## ref 失效了怎么办
 
-ref 绑定在 DOM 上。**页面一旦重新渲染**（React 刷新、翻页、AJAX 替换节点），旧 ref 全部作废：
-
-```json
-{
-  "ok": false,
-  "error": "ref e12 no longer exists in the page",
-  "requiresResnapshot": true,
-  "hint": "take a fresh browser_snapshot"
-}
-```
+ref 绑定在 DOM 上。**页面一旦重新渲染**（React 刷新、翻页、AJAX 替换节点），旧 ref 全部作废，工具返回 `{ok:false, requiresResnapshot:true, hint:"take a fresh browser_snapshot"}`。
 
 看到 `requiresResnapshot: true` 就**重新调 `browser_snapshot`**，不要换选择器硬试，也不要重试同一个 ref。
 
@@ -183,7 +185,7 @@ ref 绑定在 DOM 上。**页面一旦重新渲染**（React 刷新、翻页、A
 
 ## 用法要点与限制
 
-**浏览器按需启动。** 任何工具在实例未运行时都会自动拉起 Firefox——不需要先调 `browser_start`。首次调用会复制 profile 并等待 BiDi 端点就绪，可能需要十几秒。
+**浏览器按需启动。** 任何工具在实例未运行时都会自动拉起 Firefox——不需要先调 `browser_start`。首次调用会复制 profile 并等待 BiDi 端点就绪，可能需要十几秒。profile 副本默认 24 小时过期（`FIREFOX_BROWSER_PROFILE_TTL_HOURS`），过期后重建。
 
 **不需要指定 contextId。** 省略时自动作用于最近使用的标签页。只有在同时操作多个标签页、且要精确指定目标时才传。
 

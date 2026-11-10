@@ -161,6 +161,11 @@ describe('tool catalogue', () => {
     // surface is ~30000, so this budget is deliberately set just above the
     // trimmed size rather than at a round number that would invite another
     // round of prose.
+    //
+    // The 2.4.0 security work added five parameters (two reveal flags and
+    // three `confirm` flags on the newly gated actions), which cost 215
+    // bytes. The shared CONFIRM_SCHEMA description was shortened to pay for
+    // most of it — it is multiplied by every tool carrying the flag.
     const TOOL_PAYLOAD_BUDGET = 34000
     const payload = tools.map((t) => ({
       name: t.name,
