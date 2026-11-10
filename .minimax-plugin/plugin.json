@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "name": "firefox-browser",
+  "name": "foxbidi",
   "displayName": "Firefox 浏览器控制",
   "version": "2.9.1",
   "description": "让 Agent 通过 WebDriver BiDi 驱动真实 Firefox：导航、点击、输入、读取页面文本与截图。复用用户 Firefox profile 的登录态。可选启用验证码求解（Turnstile / reCAPTCHA / hCaptcha / GeeTest 滑块 / PoW / 百度旋转验证码）。",

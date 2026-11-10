@@ -1,4 +1,4 @@
-# firefox-browser CI
+# foxbidi CI
 #
 # Runs on every push and PR. Matrix: Node 22 / 24 (matches package.json
 # engines >= 20; 22 and 24 are what the plugin is actually used on).
@@ -9,8 +9,6 @@
 # - The integration suite launches a REAL Firefox and skips itself when none
 #   is installed, so CI stays green on a runner without Firefox. The job
 #   installs Firefox ESR so the integration tests actually execute.
-# - This repository currently has no remote; the workflow activates
-#   automatically once one is added and pushed.
 
 name: CI
 

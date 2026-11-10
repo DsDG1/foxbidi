@@ -1,10 +1,16 @@
 {
-  "name": "firefox-browser",
+  "name": "foxbidi",
   "version": "2.9.1",
   "private": true,
   "type": "module",
   "description": "Drive a real Firefox via WebDriver BiDi from MCP tools — zero npm dependencies.",
   "license": "MIT",
+  "author": "DEGTHEDIG <143299314+DsDG1@users.noreply.github.com>",
+  "homepage": "https://github.com/DsDG1/foxbidi#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DsDG1/foxbidi.git"
+  },
   "engines": {
     "node": ">=20"
   },
