@@ -33,7 +33,7 @@ import { toStructured, summarize, summarizeCaptcha, prettyJson } from './lib/mcp
 import { ERROR_CODES } from './lib/firefox/errors.js'
 import { defaultCopyBase } from './lib/firefox/provider/helpers.js'
 import net from 'node:net'
-import { chmodSync, mkdirSync, unlinkSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, unlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 // ---------------------------------------------------------------------------
@@ -72,6 +72,20 @@ const FIREFOX_BROWSER_READY_TIMEOUT_MS = Number(
  */
 const FIREFOX_BROWSER_PRIVILEGED = process.env.FIREFOX_BROWSER_PRIVILEGED === '1'
 
+/**
+ * Daemon mode.
+ *
+ * The stdio transport treats EOF on stdin as "the client is gone", so a
+ * server started with a closed stdin (or /dev/null) shuts itself down at
+ * once. That is right for a stdio server and fatal for a daemon.
+ *
+ * In daemon mode the server therefore wires NO stdin reader at all and
+ * serves the control socket instead — that socket becomes its only
+ * transport. It is started detached, so nothing about the shell that
+ * launched it can reach it.
+ */
+const FIREFOX_BROWSER_DAEMON = process.env.FIREFOX_BROWSER_DAEMON === '1'
+
 const provider = getFirefoxProvider({
   bin: FIREFOX_BROWSER_BIN || undefined,
   port: FIREFOX_BROWSER_PORT,
@@ -88,7 +102,7 @@ const provider = getFirefoxProvider({
 // ---------------------------------------------------------------------------
 
 const SERVER_NAME = 'firefox-browser'
-const SERVER_VERSION = '2.8.0'
+const SERVER_VERSION = '2.9.0'
 const LATEST_PROTOCOL_VERSION = '2025-11-25'
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 
@@ -481,11 +495,25 @@ async function handleMessage(message, sink = write) {
   if (id === undefined || id === null) {
     if (method === 'notifications/cancelled') {
       log(`cancelled: ${params && params.requestId}`)
+    } else if (method === 'notifications/exit') {
+      shutdown('client asked to exit')
     }
     return
   }
 
   switch (method) {
+    case 'shutdown': {
+      // The MCP lifecycle's shutdown, and the clean way to stop a daemon:
+      // the caller asks over the control socket, the server runs its own
+      // cleanup (close the socket, stop the browser, remove the socket
+      // file) instead of being killed.
+      //
+      // The reply goes out FIRST — the process is about to exit, and a
+      // shutdown nobody hears from looks like a failure.
+      reply(id, { ok: true }, sink)
+      setTimeout(() => shutdown('remote request'), 50)
+      return
+    }
     case 'initialize': {
       const requested = params && params.protocolVersion
       const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
@@ -547,30 +575,38 @@ function log(message) {
 
 let buffer = ''
 
-process.stdin.setEncoding('utf8')
-process.stdin.on('data', (chunk) => {
-  buffer += chunk
-  let index
-  while ((index = buffer.indexOf('\n')) !== -1) {
-    const line = buffer.slice(0, index).trim()
-    buffer = buffer.slice(index + 1)
-    if (!line) continue
-    let message
-    try {
-      message = JSON.parse(line)
-    } catch (e) {
-      log(`ignoring unparseable line: ${e.message}`)
-      continue
+// The stdio transport is the WHOLE conversation for a normal server, and
+// EOF means the client is gone. A daemon has no client on stdin — it is
+// reached through the control socket — so wiring the reader there would
+// kill the server the moment it was started detached.
+if (!FIREFOX_BROWSER_DAEMON) {
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', (chunk) => {
+    buffer += chunk
+    let index
+    while ((index = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, index).trim()
+      buffer = buffer.slice(index + 1)
+      if (!line) continue
+      let message
+      try {
+        message = JSON.parse(line)
+      } catch (e) {
+        log(`ignoring unparseable line: ${e.message}`)
+        continue
+      }
+      Promise.resolve(handleMessage(message)).catch((err) => {
+        log(`handler error: ${err && err.stack ? err.stack : err}`)
+      })
     }
-    Promise.resolve(handleMessage(message)).catch((err) => {
-      log(`handler error: ${err && err.stack ? err.stack : err}`)
-    })
-  }
-})
+  })
 
-process.stdin.on('end', () => {
-  shutdown('stdin closed')
-})
+  process.stdin.on('end', () => {
+    shutdown('stdin closed')
+  })
+} else {
+  log('daemon mode: the control socket is the transport, stdin is not read')
+}
 
 // ---------------------------------------------------------------------------
 // Control socket (optional)
@@ -590,6 +626,55 @@ export function controlSocketPath() {
 }
 
 /**
+ * Is somebody answering on that socket RIGHT NOW?
+ *
+ * A socket file can outlive the process that created it — a crashed server
+ * leaves the file behind — so the file's existence proves nothing. This
+ * asks the socket itself.
+ *
+ * @param {string} path
+ * @param {number} [timeoutMs]
+ * @returns {Promise<boolean>}
+ */
+function socketIsLive(path, timeoutMs = 1500) {
+  return new Promise((resolvePromise) => {
+    let settled = false
+    let socket = null
+    const done = (value) => {
+      if (settled) return
+      settled = true
+      try {
+        if (socket) socket.destroy()
+      } catch {
+        /* already gone */
+      }
+      resolvePromise(value)
+    }
+    const timer = setTimeout(() => done(false), timeoutMs)
+    try {
+      socket = net.createConnection(path)
+      socket.setEncoding('utf8')
+      socket.on('data', () => {
+        clearTimeout(timer)
+        done(true)
+      })
+      socket.on('error', () => {
+        clearTimeout(timer)
+        done(false)
+      })
+      socket.on('connect', () => {
+        socket.write(
+          `${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })}\n`,
+        )
+      })
+    } catch {
+      clearTimeout(timer)
+      done(false)
+    }
+  })
+}
+
+/**
  * Start the control socket.
  *
  * WHY IT EXISTS
@@ -601,19 +686,37 @@ export function controlSocketPath() {
  *
  * This socket is the way out: it speaks the same JSON-RPC over the same
  * provider, so a caller can drive the very same browser from a shell.
- * It is OFF unless FIREFOX_BROWSER_CONTROL_SOCKET=1.
+ * It is OFF unless FIREFOX_BROWSER_CONTROL_SOCKET=1, and ON by default in
+ * daemon mode, where it is the only transport the server has.
+ *
+ * @returns {Promise<object|null>}
  */
-function startControlSocket() {
-  if (String(process.env.FIREFOX_BROWSER_CONTROL_SOCKET || '') !== '1') return null
+async function startControlSocket() {
+  const enabled =
+    String(process.env.FIREFOX_BROWSER_CONTROL_SOCKET || '') === '1' || FIREFOX_BROWSER_DAEMON
+  if (!enabled) return null
   const path = controlSocketPath()
   let server
   try {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
-    // A stale socket from a crashed server would make listen() fail.
-    try {
-      unlinkSync(path)
-    } catch {
-      /* there was none */
+    if (existsSync(path)) {
+      // A LIVE socket means another server already owns it — and another
+      // server means another Firefox, which the BiDi session does not
+      // allow. Do not steal it.
+      if (await socketIsLive(path)) {
+        log(`control socket already served by a live server: ${path}`)
+        if (FIREFOX_BROWSER_DAEMON) {
+          log('daemon mode: refusing to take over a live socket')
+          process.exit(3)
+        }
+        return null
+      }
+      // A stale socket from a crashed server would make listen() fail.
+      try {
+        unlinkSync(path)
+      } catch {
+        /* there was none */
+      }
     }
     server = net.createServer((socket) => {
       let buffer = ''
@@ -666,7 +769,9 @@ function startControlSocket() {
   return server
 }
 
-const controlServer = startControlSocket()
+// The socket may already be owned by a live server, and finding that out
+// takes a round trip — so this is the one await in the module's top level.
+const controlServer = await startControlSocket()
 
 // ---------------------------------------------------------------------------
 // Shutdown

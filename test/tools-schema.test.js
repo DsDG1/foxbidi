@@ -113,6 +113,17 @@ describe('tool catalogue', () => {
     }
   })
 
+  test('browser_status declares the detail levels', () => {
+    // The status payload is trimmed by default and the full capability
+    // matrix is one parameter away. The host sends what this schema says,
+    // so the levels are pinned here.
+    const status = tools.find((t) => t.name === 'browser_status')
+    const detail = status.inputSchema.properties.detail
+    assert.equal(detail.type, 'string')
+    assert.deepEqual(detail.enum, ['summary', 'full'])
+    assert.ok(detail.description, 'browser_status.detail needs a description')
+  })
+
   test('every output schema requires `ok` and allows the error fields', () => {
     for (const tool of tools) {
       assert.deepEqual(tool.outputSchema.required, ['ok'], `${tool.name}: required`)

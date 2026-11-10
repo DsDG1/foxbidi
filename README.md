@@ -138,6 +138,20 @@ alternative — never an opaque `unknown command`. `browser_status` stays read-o
 matrix is a version-based expectation (`capabilities.probed: false`), and once it
 runs the same matrix is a live probe (`capabilities.probed: true`).
 
+**The matrix is trimmed by default.** `browser_status` reports the boolean
+`features` table, the reasons for the features that are **missing**
+(`unavailable`, each with a `reason` and a `source`) and the `knownRisks`. The
+per-feature provenance (`capabilities.featureDetails`, one entry per feature) is
+what `detail: "full"` is for:
+
+```js
+await browser_status({}) // trimmed: features + unavailable + knownRisks
+await browser_status({ detail: 'full' }) // every feature, with how it was decided
+```
+
+Both modes keep `probed` and `knownRisks` — whether the matrix was measured or
+predicted is exactly what an agent must not lose.
+
 ## Install
 
 The package is a standard local MiniMax plugin:
@@ -167,19 +181,52 @@ place to be standing.
 So the plugin ships its own way in:
 
 ```bash
+node tools/ff-call.mjs browser_status '{}'   # call a tool — no setup needed
 node tools/ff-call.mjs --doctor              # what works, what does not
-node tools/ff-call.mjs browser_status '{}'   # call a tool
-node tools/ff-call.mjs --spawn browser_status '{}'   # start a server and call it
+node tools/ff-call.mjs --serve               # start the long-lived server
+node tools/ff-call.mjs --stop                # stop it
 ```
+
+A call needs a server on the other end of the control socket. When none is
+running, the call **starts one**: a detached daemon that survives the shell
+that started it and keeps ONE Firefox alive across calls. `--no-autostart`
+turns that off, and `--serve` / `--stop` drive it by hand.
+
+```bash
+node tools/ff-call.mjs --serve     # {ok, socket, pid, log} — idempotent
+node tools/ff-call.mjs --stop      # asks the server to shut down cleanly
+```
+
+The daemon is started with no stdin at all, because the stdio transport
+treats EOF as "the client is gone" — a server that reads stdin kills itself
+the moment it is detached. It logs to `<plugin data>/server.log` and is
+stopped with `node tools/ff-call.mjs --stop`.
+
+### What the caller prints
+
+| Invocation | stdout                                        |
+| ---------- | --------------------------------------------- |
+| (default)  | the structured payload, compact JSON          |
+| `--text`   | the reply's text block — the one-line summary |
+| `--raw`    | the whole MCP result                          |
+| `--pretty` | the default payload, indented                 |
+
+The default prints the payload **once**. The old format printed the text
+block and the structured payload side by side, and for the twelve legacy
+tools the text block _is_ the pretty-printed payload — so a 3.7 KB page
+text shipped as 15 KB of output.
 
 `--doctor` reports four things: the host's own registry of this plugin's
 tools (and whether it is stale), the control socket, the browser, and
 whether this machine can resolve and reach the outside world at all.
 
-The control socket is off by default. With `FIREFOX_BROWSER_CONTROL_SOCKET=1`
-the server also listens on `control.sock` (0600) in the plugin data
-directory, speaking the same JSON-RPC to the **same provider** — the same
-Firefox, the same tabs.
+The control socket is off by default for a stdio server. With
+`FIREFOX_BROWSER_CONTROL_SOCKET=1` the server also listens on `control.sock`
+(0600) in the plugin data directory, speaking the same JSON-RPC to the
+**same provider** — the same Firefox, the same tabs. Daemon mode implies
+it, and a server that finds the socket already served by a live peer steps
+aside instead of taking it over: two servers would mean two Firefoxes, and
+the BiDi session allows only one.
 
 `tools/validate-package.mjs` checks the same registry and names the tools
 each side is missing.

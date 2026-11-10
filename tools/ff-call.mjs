@@ -12,12 +12,27 @@
 // This script is the way out. It speaks the same JSON-RPC the host speaks,
 // to the same server, over the same provider:
 //
-//   ff-call.mjs browser_status '{}'          talk to the running server
-//   ff-call.mjs --spawn browser_status '{}'  start a server and talk to it
+//   ff-call.mjs browser_status '{}'          talk to the server (starting one
+//                                            if none is running)
+//   ff-call.mjs --serve                      start the long-lived server
+//   ff-call.mjs --stop                       stop it
 //   ff-call.mjs --doctor                     say what is and is not working
 //
-// `--spawn` starts a SEPARATE server process, and a separate server means a
-// separate Firefox instance. Use it only when there is no server to talk to.
+// OUTPUT
+//
+// By default this prints the tool's STRUCTURED payload and nothing else.
+// The old format printed the reply's text block and the structured payload
+// side by side, which for the legacy tools meant the same payload twice —
+// a 3.7 KB page text shipped as 15 KB of output. The modes are now
+// mutually exclusive: `--text` for the summary line, `--raw` for the whole
+// protocol reply, `--pretty` to indent.
+//
+// THE SERVER
+//
+// A call needs a server on the other end of the socket. One is started
+// automatically when none is running, DETACHED, so it survives the shell
+// that started it and keeps ONE Firefox alive across calls. `--no-autostart`
+// turns that off; `--serve` / `--stop` drive it by hand.
 
 import net from 'node:net'
 import { spawn } from 'node:child_process'
@@ -26,6 +41,8 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defaultCopyBase } from '../lib/firefox/provider/helpers.js'
 import { TOOL_ORDER } from '../lib/mcp/tools/index.js'
+import { formatToolResult } from '../lib/mcp/ff-output.js'
+import { daemonPaths, isSocketLive, startDaemon, stopDaemon } from '../lib/mcp/ff-daemon.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN_ROOT = resolve(HERE, '..')
@@ -135,13 +152,17 @@ function connectSocket(path) {
 /**
  * Start a server and talk to it over stdio.
  *
+ * This is the ONE-SHOT path: the server speaks MCP over the pipe this
+ * script holds, and dies with it. It deliberately does NOT open the shared
+ * control socket — that socket belongs to the long-lived server, and two
+ * servers would mean two Firefoxes, which the BiDi session does not allow.
+ *
  * @returns {Promise<{client: Client, child: import('node:child_process').ChildProcess}>}
  */
 function spawnServer() {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [join(PLUGIN_ROOT, 'server.js')], {
       cwd: PLUGIN_ROOT,
-      env: { ...process.env, FIREFOX_BROWSER_CONTROL_SOCKET: '1' },
       stdio: ['pipe', 'pipe', 'inherit'],
     })
     const client = new Client(
@@ -227,8 +248,9 @@ async function doctor() {
 
   report.host = hostRegistry()
 
+  const paths = daemonPaths()
   const path = controlSocketPath()
-  report.socket = { path, exists: existsSync(path) }
+  report.socket = { path, exists: existsSync(path), pidFile: paths.pid, log: paths.log }
   if (report.socket.exists) {
     let client = null
     try {
@@ -296,8 +318,9 @@ async function doctor() {
 function advice(report) {
   if (!report.socket.exists) {
     return (
-      'No control socket. Start the server with FIREFOX_BROWSER_CONTROL_SOCKET=1, ' +
-      'or use ff-call.mjs --spawn (which starts its own Firefox).'
+      'No control socket — no server is running. A call will start one for you ' +
+      "(`node tools/ff-call.mjs <tool> '{}'`), or start it yourself with " +
+      '`node tools/ff-call.mjs --serve`.'
     )
   }
   if (!report.socket.live) {
@@ -325,28 +348,40 @@ function advice(report) {
 }
 
 /**
- * Print the tool result the way the MCP layer would.
+ * Connect to a server: the long-lived one if it is running, a fresh daemon
+ * if it is not.
  *
- * @param {object} message
+ * The order matters. A running daemon owns the shared socket and the
+ * Firefox behind it, so it is always preferred; starting a second server
+ * would mean a second Firefox, and the BiDi session allows only one.
+ *
+ * @param {Set<string>} flags
+ * @returns {Promise<{client: Client, child: object|null}>}
  */
-function printResult(message) {
-  if (!message) {
-    console.log(JSON.stringify({ ok: false, error: 'no reply' }, null, 1))
-    return
+async function connect(flags) {
+  const socket = controlSocketPath()
+
+  if (await isSocketLive(socket)) {
+    return { client: await connectSocket(socket), child: null }
   }
-  if (message.error) {
-    console.log(
-      JSON.stringify({ ok: false, error: message.error.message || message.error }, null, 1),
-    )
-    return
+
+  if (!flags.has('--no-autostart')) {
+    const report = await startDaemon({ pluginRoot: PLUGIN_ROOT })
+    if (!report.ok) {
+      throw new Error(report.error || 'the daemon did not start')
+    }
+    return { client: await connectSocket(socket), child: null }
   }
-  const result = message.result || {}
-  const structured = result.structuredContent
-  const text = (result.content || [])
-    .filter((c) => c && c.type === 'text')
-    .map((c) => c.text)
-    .join('\n')
-  console.log(JSON.stringify(structured ? { text, ...structured } : { text }, null, 1))
+
+  if (flags.has('--spawn')) {
+    const spawned = await spawnServer()
+    return { client: spawned.client, child: spawned.child }
+  }
+
+  throw new Error(
+    'no server is running and autostart is off — start one with ' +
+      '`node tools/ff-call.mjs --serve`, or drop --no-autostart',
+  )
 }
 
 async function main() {
@@ -359,9 +394,26 @@ async function main() {
     return
   }
 
+  if (flags.has('--serve')) {
+    const report = await startDaemon({ pluginRoot: PLUGIN_ROOT })
+    console.log(JSON.stringify(report, null, 1))
+    if (!report.ok) process.exit(1)
+    return
+  }
+
+  if (flags.has('--stop')) {
+    const report = await stopDaemon()
+    console.log(JSON.stringify(report, null, 1))
+    if (!report.ok) process.exit(1)
+    return
+  }
+
   const tool = rest[0]
   if (!tool) {
-    console.error('usage: ff-call.mjs [--spawn] [--doctor] <tool> [json-arguments]')
+    console.error(
+      'usage: ff-call.mjs [--serve] [--stop] [--doctor] [--text] [--raw] [--pretty] ' +
+        '[--no-autostart] [--spawn] <tool> [json-arguments]',
+    )
     process.exit(2)
   }
   const parsed = rest[1] ? JSON.parse(rest[1]) : {}
@@ -369,17 +421,13 @@ async function main() {
   let client
   let child = null
   try {
-    if (flags.has('--spawn')) {
-      const spawned = await spawnServer()
-      client = spawned.client
-      child = spawned.child
-    } else {
-      client = await connectSocket(controlSocketPath())
-    }
+    const connection = await connect(flags)
+    client = connection.client
+    child = connection.child
   } catch (e) {
     console.error(
       `could not reach the plugin server: ${e.message}\n` +
-        'Start it with FIREFOX_BROWSER_CONTROL_SOCKET=1, or pass --spawn.',
+        'Start one with `node tools/ff-call.mjs --serve`, or let a call start it for you.',
     )
     process.exit(1)
   }
@@ -387,7 +435,13 @@ async function main() {
   await handshake(client)
   try {
     const reply = await client.request('tools/call', { name: tool, arguments: parsed })
-    printResult(reply)
+    const { stdout, exitCode } = formatToolResult(reply, {
+      text: flags.has('--text'),
+      raw: flags.has('--raw'),
+      pretty: flags.has('--pretty'),
+    })
+    console.log(stdout)
+    if (exitCode) process.exit(exitCode)
   } finally {
     client.close()
     if (child) {

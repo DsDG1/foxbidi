@@ -1,6 +1,6 @@
 {
   "name": "firefox-browser",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "private": true,
   "type": "module",
   "description": "Drive a real Firefox via WebDriver BiDi from MCP tools — zero npm dependencies.",

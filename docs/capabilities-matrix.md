@@ -85,6 +85,31 @@ Firefox **140.11.0esr**。所以：
 （`probe` / `version`）和 `reason`，可以据此判断结论有多硬。浏览器没运行时整张矩阵的
 `source` 都是 `version`，且 `capabilities.probed` 为 `false`。
 
+## 默认是精简的
+
+`browser_status` 默认**不**返回整张 `featureDetails`——每个 feature 一条
+`{available, source, reason}`，十五项占了大半个 payload，而**只有不可用的那些是
+可操作的**（"这个 Firefox 读不了响应体"值得带，"这个特性可用因为探针这么说"不值得）。
+
+默认给的是：
+
+| 字段                       | 内容                                               |
+| -------------------------- | -------------------------------------------------- |
+| `capabilities.features`    | 布尔表，形状两种状态都一样                         |
+| `capabilities.unavailable` | **不可用**的 feature：`{feature, reason, source}`  |
+| `capabilities.knownRisks`  | 需要注意的前提（版本、启动参数、实探 vs 版本预期） |
+| `capabilities.probed`      | `true` 实探 / `false` 版本预期                     |
+
+需要每一项的来源时用 `detail: "full"`：
+
+```js
+await browser_status({}) // 精简
+await browser_status({ detail: 'full' }) // 带完整 featureDetails
+```
+
+`probed` 与 `knownRisks` 在两种模式下都在——"这是量出来的还是按版本猜的"是 Agent
+最不能丢的一条信息。
+
 ## 降级行为
 
 能力缺失时**不会**把原始 BiDi 错误抛给 Agent，而是返回：

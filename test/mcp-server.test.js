@@ -318,4 +318,19 @@ describe('mcp stdio server', () => {
     const res = await client.send('tools/call', { name: 'browser_status', arguments: {} })
     assert.equal(res.result.isError, false)
   })
+
+  test('the status is trimmed by default and full on request', async () => {
+    const brief = await client.send('tools/call', { name: 'browser_status', arguments: {} })
+    const briefCaps = brief.result.structuredContent.capabilities
+    assert.ok(briefCaps.features, 'the boolean table is always there')
+    assert.ok(briefCaps.unavailable, 'the unavailable features are explained')
+    assert.equal(briefCaps.featureDetails, undefined, 'the default payload is trimmed')
+
+    const full = await client.send('tools/call', {
+      name: 'browser_status',
+      arguments: { detail: 'full' },
+    })
+    const fullCaps = full.result.structuredContent.capabilities
+    assert.ok(fullCaps.featureDetails, 'the full payload keeps the provenance')
+  })
 })

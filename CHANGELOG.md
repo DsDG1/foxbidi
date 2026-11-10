@@ -5,6 +5,62 @@ All notable changes to the `firefox-browser` plugin are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/), and
 versions follow `MAJOR.MINOR.PATCH`.
 
+## v2.9.0 — 2026-11-10
+
+把**降级路径**从"考古才能走通"变成"一条命令"，并把每次调用的 token 成本砍掉一半。
+
+宿主不注入插件工具时，`tools/ff-call.mjs` 是唯一的入口。v2.8.0 把这个入口
+做出来了，但用起来还有三处硌手，这一版把它们一次清掉。
+
+### Added
+
+- **守护进程模式** —— `ff-call.mjs --serve` 起一个**脱离会话**的服务，
+  `--stop` 停掉它。
+  - 服务端新增 `FIREFOX_BROWSER_DAEMON=1`：daemon 模式**不挂 stdin 读循环**
+    （stdio 传输把 EOF 当作"客户端走了"，对 daemon 是致命的），控制 socket
+    成为它唯一的传输通道。
+  - 拉起时 `detached: true`、`stdio: ['ignore', 日志, 日志]`，因此**调用方的
+    shell 退出、进程组收到 SIGTERM、stdin 关闭都不会带走它**。日志落在
+    `<插件数据目录>/server.log`。
+  - **`shutdown` method**（MCP 生命周期里的那个）现在可用：从 socket 发起，
+    服务端先回 `{ok:true}`，再走自己的清理路径（关 socket、停浏览器、删 socket
+    文件）。`--stop` 优先走它，pid 文件只是兜底——pid 会过期，请求不会。
+- **自动拉起** —— 调用工具时若没有服务在跑，**自动**起一个守护进程再调用，
+  同一个 Firefox 跨调用复用。`--no-autostart` 可关。
+  - 零前置：`node tools/ff-call.mjs browser_status '{}'` 开箱即用。
+  - 拉起用 `O_EXCL` 锁文件串行化；锁超过 60 秒视为陈旧并接管。
+- **`browser_status` 的 `detail` 参数** —— `summary`（默认）给
+  `features` 布尔表 + `unavailable`（不可用项的 `reason`/`source`）+
+  `knownRisks`；`full` 给完整的 `featureDetails`。
+- **`ff-call.mjs` 的输出开关** —— `--text`（只给摘要行）、`--raw`（给完整
+  MCP 结果）、`--pretty`（缩进）。
+- **单实例保护** —— server 启动时若发现控制 socket **已被活的服务持有**，
+  不再 unlink 抢占：stdio 模式下放弃开 socket，daemon 模式下退出码 3
+  让位。BiDi 只允许一个活跃会话，两个 server 就意味着两个 Firefox。
+
+### Changed
+
+- **`ff-call.mjs` 默认只输出 `structuredContent`**（紧凑 JSON）——
+  **这是 CLI 的破坏性变更**：旧格式把回复的 text 块和结构化载荷并排打印，
+  而 12 个 legacy 工具的 text 块**就是**同一份载荷的 pretty JSON，等于同一
+  份数据打两遍（实测 `browser_text` 3.7 KB 正文 → 15 KB 输出）。
+  - 迁移：依赖旧 stdout 里 `.text` 字段的脚本改用 `--text`；需要完整协议形状
+    的用 `--raw`。
+- **`browser_status` 默认 payload 精简** —— `capabilities.featureDetails`
+  （每个 feature 一条 `{available, source, reason}`）不再默认返回，只有
+  不可用的那些以 `unavailable` 形式保留原因。**这是宿主可见的契约变更**：
+  解析 `featureDetails` 的调用方改用 `detail: "full"`。
+  - 可信度标记（`probed` / `knownRisks`）两个模式都保留——"这是实探还是按
+    版本推断"不能被裁掉。
+
+### Fixed
+
+- **daemon 不再因 stdin 关闭而自杀**（`shutting down (stdin closed)`）。
+- **一次性 `--spawn` 不再占用共享 socket**：它只说 stdio 上的 MCP，不与
+  长驻服务抢同一个 socket，也就不会拉起第二个 Firefox。
+- **`--doctor` 报告 daemon 状态**（pid 文件、日志路径），并给出"下一次该
+  做什么"的正确建议（"没有 socket → 一次调用就会把它起起来"）。
+
 ## v2.8.0 — 2026-11-10
 
 把"AI 用不顺手"的三类障碍一次扫掉：接入、可观测、可配置。

@@ -85,9 +85,10 @@ await browser_restart() // 让写进副本的首选项生效
 ```bash
 node <插件目录>/tools/ff-call.mjs --doctor              # 体检：宿主登记、socket、浏览器、网络
 node <插件目录>/tools/ff-call.mjs browser_status '{}'   # 直接调工具
+node <插件目录>/tools/ff-call.mjs --stop                # 收掉它自动起的常驻服务
 ```
 
-`--doctor` 会告诉你宿主的工具登记表是不是陈旧的（列出宿主认识但代码里没有、或代码里有但宿主不认识的工具名）。这条路的开关是环境变量 `FIREFOX_BROWSER_CONTROL_SOCKET=1`：开了之后服务会在插件数据目录里开一个 `control.sock`（权限 0600），与宿主走**同一个** provider——同一个 Firefox、同一批标签页。
+调用会**自动**起一个脱离会话的服务（daemon），并跨调用复用**同一个** Firefox；`--stop` 收掉它。`--doctor` 会告诉你宿主的工具登记表是不是陈旧的（列出宿主认识但代码里没有、或代码里有但宿主不认识的工具名）。这条路与宿主走**同一个** provider——同一个 Firefox、同一批标签页；服务在插件数据目录开一个 `control.sock`（权限 0600）。
 
 ## 快照与动作
 
