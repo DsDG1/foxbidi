@@ -8,12 +8,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  buildProvenance,
-  originOf,
-  WARNING_CODES,
-  SEVERITY,
-} from '../lib/firefox/provenance.js'
+import { buildProvenance, originOf, WARNING_CODES, SEVERITY } from '../lib/firefox/provenance.js'
 
 describe('provenance and warning classification', () => {
   test('origin is extracted from a URL', () => {

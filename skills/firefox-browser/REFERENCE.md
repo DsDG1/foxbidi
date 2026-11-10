@@ -79,6 +79,7 @@
 | `network_error`          | 请求本身失败                              |
 | `path_not_allowed`       | 文件路径不在允许的目录里                  |
 | `navigation_blocked`     | 这个 URL 不允许访问（私网地址、file: 等） |
+| `injection_blocked`      | 页面藏了指令，数据外发动作被拦下          |
 | `evaluate_failed`        | 页面里的表达式抛异常或语法错了            |
 | `unknown_tool`           | MCP 层被要求调用一个不存在的工具          |
 | `internal`               | 插件内部错误                              |

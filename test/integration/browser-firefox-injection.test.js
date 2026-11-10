@@ -114,7 +114,10 @@ describe('injection warnings (live browser)', { skip }, () => {
     // so. It is the carrier the agent picks elements by.
     const snap = await provider.snapshot(undefined, { maxElements: 50 })
     const kinds = (snap.signals || []).map((s) => s.kind)
-    assert.ok(kinds.includes('system_spoof'), `expected a system_spoof signal, got ${kinds.join(',')}`)
+    assert.ok(
+      kinds.includes('system_spoof'),
+      `expected a system_spoof signal, got ${kinds.join(',')}`,
+    )
     // And a visible carrier never becomes a high-severity warning.
     const high = (snap.warnings || []).filter((w) => w.severity === 'high')
     assert.equal(high.length, 1, 'exactly one high-severity warning: the hidden one')
