@@ -34,14 +34,22 @@ jobs:
 
       - name: Apply it to the repository
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_METADATA_TOKEN: ${{ secrets.REPO_METADATA_TOKEN }}
           DESCRIPTION: ${{ steps.meta.outputs.description }}
           HOMEPAGE: ${{ steps.meta.outputs.homepage }}
           TOPICS: ${{ steps.meta.outputs.topics }}
         run: |
+          # GITHUB_TOKEN cannot do this: updating a repository needs the
+          # Administration permission, which an Actions token does not carry.
+          # A classic PAT with the 'repo' scope does it, and the workflow
+          # stays a no-op until one is configured.
+          if [ -z "$REPO_METADATA_TOKEN" ]; then
+            echo "No REPO_METADATA_TOKEN secret configured — leaving the metadata alone."
+            exit 0
+          fi
           jq -n --arg d "$DESCRIPTION" --arg h "$HOMEPAGE" --argjson t "$TOPICS" \
             '{description: $d, homepage: $h, topics: $t}' > /tmp/body.json
-          if ! out=$(gh api --method PATCH "repos/${{ github.repository }}" --input /tmp/body.json 2>&1); then
+          if ! out=$(GH_TOKEN="$REPO_METADATA_TOKEN" gh api --method PATCH "repos/${{ github.repository }}" --input /tmp/body.json 2>&1); then
             echo "::error::gh api failed: ${out}"
             exit 1
           fi
