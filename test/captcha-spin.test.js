@@ -1,5 +1,5 @@
 // test/captcha-spin.test.js
-// The Baidu "spin" captcha solver.
+// The "spin" captcha solver.
 //
 // Two things can be tested without a browser:
 //   - the orientation maths, which is pure arithmetic over RGBA arrays;

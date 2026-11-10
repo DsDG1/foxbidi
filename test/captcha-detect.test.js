@@ -56,7 +56,7 @@ describe('challenge classification', () => {
       const challenge = CHALLENGES[id]
       assert.ok(challenge, `${id} should exist`)
       if (challenge.tokenless) {
-        // A tokenless challenge (Baidu's rotate-to-upright slider) is judged
+        // A tokenless challenge (a rotate-to-upright slider) is judged
         // by its widget disappearing instead of by a token appearing.
         assert.ok(challenge.solvedSelector, `${id} needs a solved selector`)
         continue

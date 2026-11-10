@@ -30,9 +30,6 @@ agent as native MCP tools.
   feature is missing.
 - **It uses what only Firefox has.** Containers (isolated identities),
   extension management, privileged chrome:// contexts, HttpOnly cookies.
-- **It can solve a CAPTCHA when the site asks for one.** Turnstile, reCAPTCHA
-  audio, hCaptcha, GeeTest sliders, proof-of-work, and Baidu's rotate-to-upright
-  slider (`spin`) — all without a bundled model and without npm dependencies.
 
 > Firefox has no CDP support (Mozilla removed the experimental implementation
 > at the end of 2024), so WebDriver BiDi is the only way to automate it — and
@@ -70,37 +67,11 @@ agent as native MCP tools.
 
 ## What 2.2 changed
 
-**Baidu's rotate-to-upright captcha is now a first-class solver.**
-
-The challenge shows a photo that is already turned off-axis inside a circle and
-asks you to drag a slider until the picture is straight. The site does not
-issue a token: it grades the **angle** you dragged, in the response of
-`POST /cap/log` (`data.op`). So `browser_captcha` for this solver reports
-success when the **server** accepted the angle.
-
-- The picture is fetched and analysed **inside the page** — the bytes are pulled
-  separately (the canvas would otherwise be tainted by the cross-origin image),
-  decoded with `createImageBitmap`, and only the resulting angle travels back.
-- The orientation estimate combines an edge-alignment histogram, a masked
-  per-band detail profile (an upright photo is sparse at the top, dense in the
-  middle, tapering below) and a top-versus-bottom brightness term, then refines
-  inside the winning candidate. Sampling is bilinear: nearest-neighbour turns
-  every edge into a staircase, and the staircase's own edge directions drag the
-  angle off by several degrees.
-- Pictures the solver cannot judge with confidence are **skipped, not guessed**
-  — a wrong answer is what makes the site start demanding extra checks.
-- The drag is human-shaped: the pointer first wanders over the picture (the
-  site records that path), then the handle is dragged with easing, a pause
-  between steps and a little vertical wobble.
-- Baidu's risk control may still ask for one more verification after accepting
-  the angle (`data.opp = 3`). That is reported as `risk_challenge`, because a
-  correct answer and a flagged session are different problems — and because
-  risk control is session-level, the solver stops there instead of hammering
-  the endpoint.
-- Measured on a single egress IP: the server accepts the angle on roughly half
-  of the rounds that are submitted, and about half of the `browser_captcha`
-  calls end in `solved`. The rest are mostly risk-control prompts. Pictures the
-  solver cannot judge are skipped instead of guessed.
+**A rotate-to-upright slider challenge became a first-class solver.** The site
+grades the angle you dragged instead of issuing a token, so `browser_captcha`
+reports success only when the server accepted the angle. The drag is
+human-shaped — easing, a pause between steps, a little vertical wobble — and
+pictures the solver cannot judge are skipped rather than guessed.
 
 ## What 2.0 changed
 
@@ -381,6 +352,7 @@ separate launch step.
 | `browser_cookie`        | `action`, `filter?`, `cookie?`, `confirm?`                  | Read or write cookies, including HttpOnly ones. Firefox 124+.                                                                                   |
 | `browser_intercept`     | `action`, `patterns?`                                       | Block requests whose URL matches. Matching happens in the plugin, and every request is released again, so the page never freezes. Firefox 124+. |
 | `browser_detectability` | `contextId?`                                                | Measure how detectable this session is — honestly.                                                                                              |
+| `browser_captcha`       | `solver`, `sttUrl?`, `visionUrl?`, `timeoutMs?`             | Optional: solve a CAPTCHA challenge the page throws at you. See [docs/captcha.md](docs/captcha.md).                                             |
 
 See [`docs/firefox-only.md`](docs/firefox-only.md) for what these can do that a
 CDP-based harness cannot, and
@@ -552,7 +524,7 @@ All settings are environment variables. The MCP server inherits `HOME`,
 | ---------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `FIREFOX_BROWSER_BIN`              | auto-detected           | Path to the Firefox binary.                                                                                                                       |
 | `FIREFOX_BROWSER_PORT`             | `9333`                  | Preferred BiDi port; occupied ports are probed upward.                                                                                            |
-| `FIREFOX_BROWSER_HEADLESS`         | `1`                     | Set to `0` for a visible window (manual CAPTCHA / login).                                                                                         |
+| `FIREFOX_BROWSER_HEADLESS`         | `1`                     | Set to `0` for a visible window (manual sign-in).                                                                                                 |
 | `FIREFOX_BROWSER_PROFILE`          | auto-detected           | Source profile. Auto-detection prefers the profile a running Firefox holds.                                                                       |
 | `FIREFOX_BROWSER_PROFILE_COPY`     | see below               | Base directory for the profile copy.                                                                                                              |
 | `FIREFOX_BROWSER_TIMEOUT_MS`       | `30000`                 | Per-BiDi-command timeout.                                                                                                                         |

@@ -149,7 +149,7 @@ return (args) => {
 
 ## 验证码（可选能力）
 
-`browser_captcha` 是**可选**的：不调用它，插件什么都不做。`{"solver":"auto","sttUrl":"http://127.0.0.1:8000"}`；`solver` 可填 `turnstile` / `recaptcha` / `hcaptcha` / `geetest` / `pow` / `spin`。**成功判据是站点发放的 token，不是"点中了"**：`ok:true` 只在 token 长度 > 0 时返回，否则 `ok:false` + `status`。插件**不含任何模型**：音频挑战要你指一个 Whisper 兼容服务（`sttUrl`），没有就报 `stt_unavailable`；图片九宫格默认不支持（可传 `visionUrl`）。**缺服务就报错，绝不假装成功。** 已端到端验证：Turnstile、百度旋转验证码（`spin`）。未在本机验证：reCAPTCHA v2 / hCaptcha / GeeTest / PoW。**细节见 `docs/captcha.md`。**
+`browser_captcha` 是**可选**的：不调用它，插件什么都不做。`{"solver":"auto","sttUrl":"http://127.0.0.1:8000"}`；`solver` 可填 `turnstile` / `recaptcha` / `hcaptcha` / `geetest` / `pow` / `spin`。**成功判据是站点发放的 token，不是"点中了"**：`ok:true` 只在 token 长度 > 0 时返回，否则 `ok:false` + `status`。插件**不含任何模型**：音频挑战要你指一个 Whisper 兼容服务（`sttUrl`），没有就报 `stt_unavailable`；图片九宫格默认不支持（可传 `visionUrl`）。**缺服务就报错，绝不假装成功。** 细节见 `docs/captcha.md`。
 
 ## 不可逆动作与脱敏
 

@@ -440,7 +440,7 @@ versions follow `MAJOR.MINOR.PATCH`.
 
 ## v2.2.0
 
-Baidu 的旋转验证码求解器成为一等公民。
+旋转验证码求解器成为一等公民。
 
 ## v2.0.0
 
