@@ -102,7 +102,7 @@ const provider = getFirefoxProvider({
 // ---------------------------------------------------------------------------
 
 const SERVER_NAME = 'firefox-browser'
-const SERVER_VERSION = '2.9.1'
+const SERVER_VERSION = '2.9.3'
 const LATEST_PROTOCOL_VERSION = '2025-11-25'
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 

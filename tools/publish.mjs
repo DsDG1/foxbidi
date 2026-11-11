@@ -9,21 +9,15 @@
 // Usage:
 //   node tools/publish.mjs [--target <dir>] [--dry-run] [--force]
 
-import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkHostContract } from './check-host-contract.mjs'
+import { checkHostContract, trackedFiles } from './check-host-contract.mjs'
 
 // The repository this script ships in — not the current working directory,
 // and not argv (the CLI flags would be mistaken for a source path).
 const SOURCE = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-
-function trackedFiles(source) {
-  const out = execFileSync('git', ['ls-files', '-z'], { cwd: source, maxBuffer: 16 * 1024 * 1024 })
-  return out.toString('utf8').split('\0').filter(Boolean)
-}
 
 /**
  * Write the tracked files of `source` into `target` and verify the result.

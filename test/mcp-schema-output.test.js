@@ -3,20 +3,23 @@
 // summary.
 //
 // The point of these tests is the CONTRACT between what a tool declares and
-// what it actually returns. An array property here is always a list of
-// records — declaring it as an array of strings contradicts the payload, and
-// the host rejects such a result outright.
+// what it actually returns. An output schema DESCRIBES a payload; it must
+// never reject it. Constraining an array to `items: {type:'object'}` when
+// the payload carries strings made the host refuse the whole call with
+// `-32602`, so the default is now "no item constraint" and a tool that
+// wants precision declares the item type itself.
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { outputSchema, summarize, summarizeCaptcha } from '../lib/mcp/schema.js'
 
 describe('outputSchema', () => {
-  test('an array property defaults to a list of objects', () => {
+  test('an array property constrains nothing by default', () => {
     const schema = outputSchema({ properties: { elements: { type: 'array' } } })
     assert.equal(schema.properties.elements.type, 'array')
-    assert.equal(schema.properties.elements.items.type, 'object')
-    assert.equal(schema.properties.elements.items.additionalProperties, true)
+    // No `items`: JSON Schema reads a missing item schema as "any element
+    // type", so the payload is never rejected for being the wrong shape.
+    assert.equal(schema.properties.elements.items, undefined)
   })
 
   test('an explicit item type is honoured', () => {

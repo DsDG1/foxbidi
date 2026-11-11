@@ -29,7 +29,7 @@ foxbidi/
 {
   "name": "foxbidi",
   "displayName": "Firefox 浏览器控制",
-  "version": "2.9.1",
+  "version": "2.9.3",
   "description": "…",
   "icon": "icon.png",
   "category": "Code",
@@ -42,6 +42,18 @@ foxbidi/
 `mcpServers` 和 `skills` 是把一个目录变成可用插件的关键：前者指明要启动哪个 MCP
 server，后者是告诉代理该怎么驱动它的那份文档。`exampleQueries` 只是宿主展示用的示例
 问题。
+
+### 卡住时的两级恢复
+
+`browser_restart` 有两个范围，插件在这一点上刻意做得不对称：
+
+- `scope: "browser"`（默认）——杀 Firefox 再起。用于让写进 profile 副本的首选项生效。
+- `scope: "session"` ——只换掉 BiDi 会话，**Firefox 进程不杀、标签页全留、登录态不丢**。
+  用于会话卡死（`session_stuck`）：一条永远不返回的命令占着串行队列，重置会话是唯一
+  的修法，而重启浏览器会把用户正在看的东西一并弄丢。
+
+插件**不会自动重试**卡死的操作——被放弃的导航可能在会话恢复之后才落地，自动重试会让
+页面被悄悄改掉。
 
 ### MCP server
 

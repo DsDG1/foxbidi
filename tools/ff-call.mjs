@@ -41,6 +41,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defaultCopyBase } from '../lib/firefox/provider/helpers.js'
 import { TOOL_ORDER } from '../lib/mcp/tools/index.js'
+import { compareEntry, DEFAULT_PRESET, findPluginEntry } from './host-registry.mjs'
 import { formatToolResult } from '../lib/mcp/ff-output.js'
 import { daemonPaths, isSocketLive, startDaemon, stopDaemon } from '../lib/mcp/ff-daemon.js'
 
@@ -50,6 +51,23 @@ const PLUGIN_ROOT = resolve(HERE, '..')
 /** Where the control socket lives, if the server was started with one. */
 export function controlSocketPath() {
   return join(defaultCopyBase(), 'control.sock')
+}
+
+/**
+ * The plugin name from the manifest.
+ *
+ * The host's registry is keyed by this name, so it is what identifies this
+ * plugin's entry among the others in the file.
+ *
+ * @returns {string}
+ */
+function pluginManifestName() {
+  try {
+    const raw = readFileSync(join(PLUGIN_ROOT, '.minimax-plugin', 'plugin.json'), 'utf8')
+    return JSON.parse(raw).name || ''
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -207,26 +225,30 @@ function hostRegistry() {
     join(process.env.HOME || '', '.minimax', 'mcp-runtime-names.json'),
     join(defaultCopyBase(), '..', '..', 'mcp-runtime-names.json'),
   ]
+  const manifestName = pluginManifestName()
   for (const path of candidates) {
     try {
       if (!existsSync(path)) continue
       const data = JSON.parse(readFileSync(path, 'utf8'))
       const servers = data.servers || []
-      const entry = servers.find((s) => s.raw === 'firefox-browser')
+      // The entry the host injects is the one keyed by the PLUGIN NAME. The
+      // raw server name is not enough: a renamed plugin leaves the old entry
+      // behind, and it carries the same raw name.
+      const entry = findPluginEntry(servers, manifestName)
       if (!entry) return { path, found: true, registered: false }
-      const registered = (entry.tools || []).map((t) => t.raw)
-      const missing = TOOL_ORDER.filter((name) => !registered.includes(name))
-      const unknown = registered.filter((name) => !TOOL_ORDER.includes(name))
+      const cmp = compareEntry(entry, { catalogue: TOOL_ORDER })
       return {
         path,
         found: true,
         registered: true,
-        tools: registered.length,
-        codeTools: TOOL_ORDER.length,
-        stale: missing.length > 0 || unknown.length > 0,
-        missing,
-        unknown,
-        hasBrowserFind: registered.includes('browser_find'),
+        tools: cmp.registered.length,
+        codeTools: cmp.expected.length,
+        presetTools: cmp.expected.length,
+        stale: cmp.missing.length > 0 || cmp.unknown.length > 0,
+        missing: cmp.missing,
+        unknown: cmp.unknown,
+        wider: cmp.wider,
+        hasBrowserFind: cmp.registered.includes('browser_find'),
       }
     } catch {
       /* try the next candidate */
@@ -334,15 +356,19 @@ function advice(report) {
       ? ` The host knows tools this build does not: ${report.host.unknown.join(', ')}.`
       : ''
     return (
-      `The host registry is STALE — it lists ${report.host.tools} tools, ` +
-      `this build has ${report.host.codeTools}. The plugin is fine; the host ` +
-      `is injecting an outdated tool list.${missing}${unknown} ` +
-      'Restart the host (or reload the plugin) to pick up the new tools; ' +
-      'until then, call them through this script.'
+      `The host registry is OUT OF STEP — it lists ${report.host.tools} tools, ` +
+      `the ${DEFAULT_PRESET} preset of this build exposes ${report.host.presetTools}.` +
+      `${missing}${unknown} The plugin is fine; the host is injecting an ` +
+      'outdated tool list. Restart the host (or reload the plugin) to pick up ' +
+      'the new tools; until then, call them through this script.'
     )
   }
   if (report.host.found && report.host.registered) {
-    return `The host registry lists ${report.host.tools} tools for this plugin, and it is current.`
+    const wider =
+      report.host.wider && report.host.wider.length
+        ? ` (${report.host.wider.length} of them beyond the ${DEFAULT_PRESET} preset)`
+        : ''
+    return `The host registry lists ${report.host.tools} tools for this plugin, and it is current${wider}.`
   }
   return "The control socket is live. Call a tool with: ff-call.mjs <tool> '{}'"
 }

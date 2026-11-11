@@ -106,7 +106,7 @@ describe('2.0 capabilities (live browser)', { skip }, () => {
     assert.equal(first.hasMore, true)
 
     // Walk to the last page and confirm a late element is reachable.
-    let offset = 0
+    let offset
     let last = first
     let pages = 0
     while (last.hasMore && pages < 20) {

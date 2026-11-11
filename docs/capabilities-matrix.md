@@ -15,19 +15,19 @@
 
 ## 版本门槛
 
-| 能力                    | 需要                 | 对应 BiDi                                               | 缺了会怎样                                   |
-| ----------------------- | -------------------- | ------------------------------------------------------- | -------------------------------------------- |
-| JS 弹窗处理             | FF **118** / 119     | `browsingContext.userPromptOpened` / `handleUserPrompt` | 弹窗会**阻塞页面**，后续命令全部超时         |
-| 视口覆盖                | FF **117**           | `browsingContext.setViewport`                           | 返回 `capability_unavailable`                |
-| 标签页重载              | FF **119**           | `browsingContext.reload`                                | 返回 `capability_unavailable`                |
-| 历史前进后退            | FF **122**           | `browsingContext.traverseHistory`                       | 返回 `capability_unavailable`                |
-| 容器（多身份）          | FF **124**           | `browser.createUserContext` 等                          | 返回 `capability_unavailable`                |
-| Cookie 读写             | FF **124**           | `storage.getCookies` / `setCookie`                      | 返回 `capability_unavailable`                |
-| 请求拦截                | FF **124**           | `network.addIntercept`                                  | 返回 `capability_unavailable`                |
-| 扩展管理                | FF **137**           | `webExtension.install` / `uninstall`                    | 返回 `capability_unavailable`                |
-| 特权（chrome://）上下文 | FF **138**           | `--remote-allow-system-access`                          | 读不了 `about:preferences` / `about:addons`  |
-| 下载事件（开始 / 结束） | FF **144** / **145** | `browsingContext.downloadWillBegin` / `downloadEnd`     | 未接入                                       |
-| **响应体读取**          | FF **144**           | `network.getData`                                       | `browser_network` 返回 `bodyAvailable:false` |
+| 能力                    | 需要                 | 对应 BiDi                                               | 缺了会怎样                                               |
+| ----------------------- | -------------------- | ------------------------------------------------------- | -------------------------------------------------------- |
+| JS 弹窗处理             | FF **118** / 119     | `browsingContext.userPromptOpened` / `handleUserPrompt` | 弹窗会**阻塞页面**：动作返回 `dialog_open`，后续命令超时 |
+| 视口覆盖                | FF **117**           | `browsingContext.setViewport`                           | 返回 `capability_unavailable`                            |
+| 标签页重载              | FF **119**           | `browsingContext.reload`                                | 返回 `capability_unavailable`                            |
+| 历史前进后退            | FF **122**           | `browsingContext.traverseHistory`                       | 返回 `capability_unavailable`                            |
+| 容器（多身份）          | FF **124**           | `browser.createUserContext` 等                          | 返回 `capability_unavailable`                            |
+| Cookie 读写             | FF **124**           | `storage.getCookies` / `setCookie`                      | 返回 `capability_unavailable`                            |
+| 请求拦截                | FF **124**           | `network.addIntercept`                                  | 返回 `capability_unavailable`                            |
+| 扩展管理                | FF **137**           | `webExtension.install` / `uninstall`                    | 返回 `capability_unavailable`                            |
+| 特权（chrome://）上下文 | FF **138**           | `--remote-allow-system-access`                          | 读不了 `about:preferences` / `about:addons`              |
+| 下载事件（开始 / 结束） | FF **144** / **145** | `browsingContext.downloadWillBegin` / `downloadEnd`     | 未接入                                                   |
+| **响应体读取**          | FF **144**           | `network.getData`                                       | `browser_network` 返回 `bodyAvailable:false`             |
 
 下载事件的两个门槛是**分别实测**的：Firefox 140.11.0esr 上
 `downloadWillBegin` 和 `downloadEnd` 都会被直接拒绝（"not a valid event name"），
@@ -35,12 +35,12 @@
 
 ## 永远可用的工具
 
-| 工具                        | 需要                                | 缺了会怎样                                                     |
-| --------------------------- | ----------------------------------- | -------------------------------------------------------------- |
-| `browser_net_check`         | 无（纯 node API + BiDi）            | 永远可用；探针只是"本机能连 + 浏览器能加载"两个样本            |
-| `browser_restart`           | 无                                  | 永远可用；写进 profile 副本的首选项靠它才生效                  |
-| `browser_egress`            | 无（纯 node API）                   | 永远可用；代理自己解析、自己开连接                             |
-| `browser_config` 即时首选项 | FF + `--remote-allow-system-access` | 返回 `privileged_unavailable`，并**降级**为"写副本 + 重启生效" |
+| 工具                        | 需要                                | 缺了会怎样                                                                                      |
+| --------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `browser_net_check`         | 无（纯 node API + BiDi）            | 永远可用；探针只是"本机能连 + 浏览器能加载"两个样本                                             |
+| `browser_restart`           | 无                                  | 永远可用；写进 profile 副本的首选项靠它才生效；`scope:"session"` 只重置 BiDi 会话，不杀 Firefox |
+| `browser_egress`            | 无（纯 node API）                   | 永远可用；代理自己解析、自己开连接                                                              |
+| `browser_config` 即时首选项 | FF + `--remote-allow-system-access` | 返回 `privileged_unavailable`，并**降级**为"写副本 + 重启生效"                                  |
 
 ## 降级行为
 

@@ -9,9 +9,18 @@
 // applies the same rules locally so the failure shows up before shipping.
 //
 // Usage: node tools/check-host-contract.mjs [directory ...] [--json]
+//        node tools/check-host-contract.mjs --package
+//
+// `--package` checks the package this repository SHIPS — the tracked files
+// staged into a temporary directory — rather than the working tree. The
+// contract is about the package, so checking the working tree reports a
+// failure that does not exist: `node_modules` and `.git` are not part of
+// the package, but a file count would include them.
 
-import { lstatSync, readdirSync } from 'node:fs'
-import { join, relative, resolve, sep } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 
 /** Mirrors PLUGIN_PACKAGE_V1_LIMITS in the host runtime. */
 export const LIMITS = {
@@ -140,19 +149,78 @@ export function checkHostContract(root) {
   return { ok: violations.length === 0, root: rootAbs, files, entries, totalBytes, violations }
 }
 
+/**
+ * The files the package ships: everything in the git index.
+ *
+ * The host scans the installed directory as a package, so the package is
+ * the TRACKED files and nothing else — no .git, no node_modules, no
+ * runtime scratch.
+ *
+ * @param {string} source
+ * @returns {string[]}
+ */
+export function trackedFiles(source) {
+  const out = execFileSync('git', ['ls-files', '-z'], {
+    cwd: source,
+    maxBuffer: 16 * 1024 * 1024,
+  })
+  return out.toString('utf8').split('\0').filter(Boolean)
+}
+
+/**
+ * Copy the tracked files of `source` into `target`.
+ *
+ * @param {string} source
+ * @param {string} target
+ * @returns {string[]} the files written
+ */
+export function stagePackage(source, target) {
+  const files = trackedFiles(source)
+  for (const file of files) {
+    const dest = join(target, file)
+    mkdirSync(dirname(dest), { recursive: true })
+    cpSync(join(source, file), dest)
+  }
+  return files
+}
+
+/**
+ * Check the CONTRACT of the package this repository ships.
+ *
+ * The contract applies to the PACKAGE, not to the working tree. Running it
+ * over the repository root counts `node_modules` and `.git` as files of the
+ * package and reports a failure that does not exist — the shipped package
+ * is fine. So the tracked files are staged into a temporary directory and
+ * THAT is what gets checked.
+ *
+ * @param {string} source
+ * @returns {{ok: boolean, root: string, files: number, entries: number, totalBytes: number, violations: Array<object>}}
+ */
+export function checkPackageContract(source) {
+  const staging = mkdtempSync(join(tmpdir(), 'foxbidi-contract-'))
+  try {
+    stagePackage(source, staging)
+    return checkHostContract(staging)
+  } finally {
+    rmSync(staging, { recursive: true, force: true })
+  }
+}
+
 function main() {
   const args = process.argv.slice(2)
   const asJson = args.includes('--json')
+  const asPackage = args.includes('--package')
   const targets = args.filter((a) => !a.startsWith('--'))
   const list = targets.length ? targets : ['.']
   let failed = false
   for (const target of list) {
-    const result = checkHostContract(target)
+    const result = asPackage ? checkPackageContract(resolve(target)) : checkHostContract(target)
     if (asJson) {
       console.log(JSON.stringify(result))
     } else {
+      const what = asPackage ? 'package' : 'directory'
       console.log(
-        `${result.root}: ${result.files} files, ${result.entries} entries, ${result.totalBytes} bytes`,
+        `${result.root}: ${result.files} files, ${result.entries} entries, ${result.totalBytes} bytes (${what})`,
       )
       for (const v of result.violations) console.log(`  ✗ ${v.code} ${v.path} — ${v.detail}`)
       if (result.ok) console.log('  ✓ host package contract OK')

@@ -142,7 +142,7 @@ describe('mcp structured output contract', () => {
     }
   })
 
-  test('an array output declares a record item type, not a string', async () => {
+  test('an array output does not constrain its items to objects', async () => {
     const client = new McpClient()
     try {
       await client.send('initialize', { protocolVersion: '2025-11-25' })
@@ -150,11 +150,15 @@ describe('mcp structured output contract', () => {
       for (const tool of list.result.tools) {
         for (const [key, spec] of Object.entries(tool.outputSchema.properties || {})) {
           if (spec.type !== 'array') continue
-          assert.ok(spec.items, `tool "${tool.name}" declares array "${key}" with no item schema`)
-          assert.equal(
-            spec.items.type,
+          // An output schema describes a payload; it must never reject it.
+          // `items: {type:'object'}` on a property whose payload carries
+          // strings made the host refuse the whole call with -32602, so the
+          // tools that return lists of names declare `items:{type:'string'}`
+          // and the record arrays declare nothing at all.
+          assert.notEqual(
+            spec.items && spec.items.type,
             'object',
-            `tool "${tool.name}" declares array "${key}" as ${spec.items.type} — its items are records`,
+            `tool "${tool.name}" declares array "${key}" as objects — its items may be scalars`,
           )
         }
       }

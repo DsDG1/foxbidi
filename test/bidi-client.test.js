@@ -316,3 +316,148 @@ describe('bidi client', () => {
     assert.deepEqual(order, ['start:first', 'end:first', 'start:second', 'end:second'])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Abandoning a command
+// ---------------------------------------------------------------------------
+
+describe('an abandonable command', () => {
+  const openServers = new Set()
+  const openClients = new Set()
+
+  /**
+   * Start a fake server and register it for cleanup.
+   */
+  async function startServer(handler) {
+    const s = new FakeBiDiServer(handler)
+    openServers.add(s)
+    await s.listen()
+    return s
+  }
+
+  /**
+   * Connect a client and register it for cleanup.
+   */
+  async function connectClient(port, opts = {}) {
+    const c = new BidiClient({ port, timeoutMs: 5000, ...opts })
+    openClients.add(c)
+    await c.connect()
+    return c
+  }
+
+  after(async () => {
+    for (const c of openClients) {
+      try {
+        c.close()
+      } catch {}
+    }
+    for (const s of openServers) {
+      try {
+        await s.close()
+      } catch {}
+    }
+    openClients.clear()
+    openServers.clear()
+  })
+
+  test('abandoning resolves the caller instead of rejecting', async () => {
+    const server = await startServer(() => null) // never replies
+
+    const c = await connectClient(server.port)
+    const handle = c.sendAbandonable('never.answered')
+    handle.abandon()
+    const result = await handle.promise
+    assert.equal(result.abandoned, true)
+  })
+
+  test('abandoning releases the queue for the next command', async () => {
+    // This is the whole point: a command that never returns used to hold
+    // the serialized queue for the full command timeout, and every command
+    // behind it waited.
+    const server = await startServer((msg) => {
+      if (msg.method === 'stuck') return null // never replies
+      return { type: 'success', id: msg.id, result: { which: msg.method } }
+    })
+
+    const c = await connectClient(server.port)
+    const stuck = c.sendAbandonable('stuck')
+    // Give the command time to be dispatched, then abandon it.
+    await new Promise((r) => setTimeout(r, 30))
+    stuck.abandon()
+    await stuck.promise
+
+    const next = await c.send('next')
+    assert.equal(next.which, 'next', 'the queue must move on after an abandon')
+  })
+
+  test('a command abandoned while it was still queued is never sent', async () => {
+    const seen = []
+    const server = await startServer((msg) => {
+      seen.push(msg.method)
+      if (msg.method === 'first') return null // never replies
+      return { type: 'success', id: msg.id, result: {} }
+    })
+
+    const c = await connectClient(server.port)
+    const first = c.sendAbandonable('first')
+    const second = c.sendAbandonable('second')
+    // 'second' is still queued behind 'first' — abandon it there.
+    second.abandon()
+    await second.promise
+    first.abandon()
+    await first.promise
+
+    assert.equal(seen.includes('second'), false, 'the abandoned command must not be sent')
+  })
+
+  test('a late response for an abandoned command is discarded', async () => {
+    let socket = null
+    let lateId = null
+    const server = await startServer((msg, s) => {
+      socket = s
+      if (msg.method === 'late') {
+        lateId = msg.id
+        return null // never replies
+      }
+      return { type: 'success', id: msg.id, result: { which: msg.method } }
+    })
+
+    const c = await connectClient(server.port)
+    const handle = c.sendAbandonable('late')
+    await new Promise((r) => setTimeout(r, 30))
+    handle.abandon()
+    await handle.promise
+
+    // The command finally answers — long after the caller gave up.
+    server.reply(socket, { type: 'success', id: lateId, result: { late: true } })
+    await new Promise((r) => setTimeout(r, 30))
+
+    // The client is still usable, and nothing was resolved twice.
+    const next = await c.send('after')
+    assert.equal(next.which, 'after')
+    assert.equal(c.connected, true)
+  })
+
+  test('the ordinary send keeps its old semantics', async () => {
+    const server = await startServer((msg) => ({
+      type: 'success',
+      id: msg.id,
+      result: { which: msg.method },
+    }))
+
+    const c = await connectClient(server.port, { timeoutMs: 300 })
+    const result = await c.send('ordinary')
+    assert.equal(result.which, 'ordinary')
+
+    // A timeout still rejects — the abandon path is opt-in.
+    const other = await startServer(() => null)
+    const c2 = await connectClient(other.port, { timeoutMs: 200 })
+    await assert.rejects(
+      () => c2.send('never.answered'),
+      (err) => {
+        assert.ok(err instanceof BidiTimeoutError)
+        return true
+      },
+    )
+  })
+})

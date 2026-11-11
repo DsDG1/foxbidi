@@ -60,6 +60,7 @@
 - `browser_batch` — `steps` 是有序动作数组，每步一个 `"action"` 加它的参数；`stopOnError`（默认 true）控制失败即停。
 - `browser_run_script` — `path` 必须在 `~/.mavis/ff-workspace/` 内；`args` 会作为脚本的 `args` 参数传入。
 - `browser_handle_dialog` — `action` 为 `accept` / `dismiss` / `acceptWithText`（后者用 `text` 填入）。
+  - `dialogPolicy: "manual"` 时弹窗**保持打开**，页面被它挡着：动作会返回 `code: "dialog_open"`（而不是干等到超时），`browser_handle_dialog` 处理完页面才恢复。
 
 ## 网络
 
@@ -67,6 +68,7 @@
   - 同时取两个样本：**本机**（能否解析、能否连通）与**浏览器**（能否加载），两者的差就是诊断。
   - `diagnosis` 取值：`ok` / `dns_broken` / `firefox_egress_blocked` / `host_egress_blocked` / `inconclusive`。
   - `host` 与 `browser` 两个对象带各段的原始事实；`hint` 是下一步该做什么；`suggestEgress` 为 true 时提示可以用 `browser_egress`。
+  - **端口**：目标 URL 带端口就试那个端口，没带就试 443 再 80——只试 443 会把"站点只在 8080 上服务"误判成不通。`ports` 字段列出试过的每个端口。
   - 探针页用完即关，**不留残留标签页**；不读页面内容，因此不受页面注入告警影响。
 - `browser_egress` — 本地出口代理（可选，默认关）。`action` 为 `start` / `stop` / `status`。
   - `start` 会起一个监听 `127.0.0.1` 的转发代理，并把代理设置写进 profile 副本；**端口每次可能变，所以要 `browser_restart` 才生效**。
@@ -78,10 +80,18 @@
 - `browser_start` — 幂等：实例已在跑就复用。首次启动要复制 profile 并等 BiDi 端点就绪。
 - `browser_stop` — `keep: true` 保留 Firefox 进程，之后 `browser_start` 会重新接管。
 - `browser_navigate` — `url` 必填（缺 scheme 按 https 补）；`wait` 取 `none`（立刻返回）/ `interactive`（DOM 已解析）/ `complete`（默认）。
+  - 返回里 `url` 是**请求的** URL，`landedUrl` 是标签页**现在真的在**的 URL，`navigated` 说明这次导航有没有生效（标签页动过，或它正站在你要的那一页上）。
+  - `wait: "none"` 时页面可能还没到：这时会带 `pending: true` 和一句提示，让 `browser_wait_for` 去等。**别把 `ok: true` 当成"页面已经到了"**——命令被接受不等于页面到了。
+  - 跨源重定向是合法的，所以 `landedUrl` 可能和 `url` 不同（OAuth 登录常见）。这不是失败。
+  - **超时时看 `hint`**：它说的是事实——哪个请求、挂了多久。请求还没超过命令超时就
+    `browser_wait_for` 等；已经超过就是"卡住了"，按提示跑 `browser_restart {scope:"session"}`。
 - `browser_back` / `browser_forward` — 走标签页历史（Firefox 122+）。到头会返回 `code: "invalid_argument"` 和一句提示，不是浏览器坏了。
 - `browser_reload` — 重载当前标签页（Firefox 119+）。
 - `browser_set_viewport` — `width` / `height`（CSS 像素）必填，`devicePixelRatio` 默认 1。用来测响应式布局而不改窗口大小；会重排页面，所以要 `confirm: true`（Firefox 117+）。
 - `browser_restart` — 重启 Firefox。写进 profile 副本的首选项**重启后才生效**，用这个让它们立刻起作用（不用重启 MCP 服务）。返回新的 `pid` / `port` / `sessionId`。
+  - `scope` 选范围：`browser`（默认）杀 Firefox 再起，首选项随之生效；`session` 只**重置 BiDi 会话**——**Firefox 不杀、标签页全留、登录态不丢**，只把卡住的会话换掉。
+  - 什么时候用哪个：`session_stuck`（会话卡死）用 `scope: "session"`；改了首选项等它生效用默认的 `browser`。
+  - 返回里 `scope` 和 `browserKept` 说明这次实际做了什么。
 - `browser_config` 的扩展参数：`prefs`（Firefox 首选项对象）、`applyNow`（是否立即作用于运行中的浏览器）、`timeoutMs`（单条命令超时，立即生效）、`restart`（改完是否重启）。
   - 首选项**只写 profile 副本**，用户真实 profile 永不被改；首选项名会做白名单校验，值只收字符串/数字/布尔。
   - `applyNow: true` 需要特权 Firefox（宿主以 `FIREFOX_BROWSER_PRIVILEGED=1` 启动）。没有特权时不报错，降级为「写副本 + 重启生效」，并在 `hint` 里说明。
@@ -117,6 +127,8 @@
 | `confirm_required`       | 不可逆动作被拦下，需要 `confirm: true`        |
 | `invalid_argument`       | 参数不合法（包括历史到头）                    |
 | `timeout`                | 等待超时                                      |
+| `session_stuck`          | BiDi 会话卡死，只有重置会话才能恢复           |
+| `dialog_open`            | 有模态弹窗挡着页面，动作已提前返回            |
 | `network_error`          | 请求本身失败                                  |
 | `path_not_allowed`       | 文件路径不在允许的目录里                      |
 | `navigation_blocked`     | 这个 URL 不允许访问（私网地址、file: 等）     |
@@ -137,6 +149,14 @@
 用 `confirm: true` 就能重试，而 `injection_blocked` **解不开** —— 那个参数是
 Agent 自己填的，页面能骗你填。只有用户可以解除（`FIREFOX_BROWSER_INJECTION_GATE=off`）。
 读取永远不受限。
+
+`session_stuck` 与 `dialog_open` 各有唯一正确的修法：
+
+- `session_stuck` —— BiDi 会话卡住了：一条永远不返回的命令占着串行队列，后面的全在等。
+  **不要重试、也不要干等**：跑 `browser_restart({scope: "session"})` 重置会话，
+  Firefox、标签页、登录态都留着。只有重置会话能解开它。
+- `dialog_open` —— 有模态弹窗挡着页面。跑 `browser_handle_dialog({action: "accept" | "dismiss"})`。
+  插件**不会自动重试**这个动作：被放弃的那次导航可能在弹窗处理完才落地，页面会被悄悄改掉。
 
 ## 页面内容返回的字段
 

@@ -286,7 +286,16 @@ describe('mcp tools (live browser)', { skip }, () => {
     const tool = list.result.tools.find((t) => t.name === 'browser_snapshot')
     assert.ok(tool, 'browser_snapshot must be listed')
     const items = tool.outputSchema.properties.elements.items
-    assert.equal(items.type, 'object', 'the element list is a list of records')
+    // The element list IS a list of records — but the schema must not
+    // CONSTRAIN it away. A schema that rejects its own payload does not
+    // answer with a wrong value; it answers with a protocol error, and the
+    // agent never sees the result at all. So the contract is "the schema
+    // accepts what the tool returns", not "the schema pins the element
+    // type".
+    assert.ok(
+      !items || items.type === 'object',
+      'the element list must not be constrained to a non-record type',
+    )
 
     const res = await send('tools/call', { name: 'browser_snapshot', arguments: {} })
     for (const el of res.result.structuredContent.elements) {

@@ -1,6 +1,6 @@
 {
   "name": "foxbidi",
-  "version": "2.9.1",
+  "version": "2.9.3",
   "private": true,
   "type": "module",
   "description": "Drive a real Firefox via WebDriver BiDi from MCP tools — zero npm dependencies.",
@@ -23,7 +23,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "validate": "node tools/validate-package.mjs",
-    "contract": "node tools/check-host-contract.mjs",
+    "contract": "node tools/check-host-contract.mjs --package",
     "publish": "node tools/publish.mjs",
     "publish:dry": "node tools/publish.mjs --dry-run"
   },

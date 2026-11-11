@@ -245,29 +245,38 @@ checkPaths(ROOT)
 // older than the code, the host injects a tool list that no longer matches.
 try {
   const { createTools } = await import('../lib/mcp/tools/index.js')
+  const { compareEntry, DEFAULT_PRESET, findPluginEntry } = await import('./host-registry.mjs')
   const catalogue = createTools({ provider: {} }).map((t) => t.name)
   const registryPath = join(process.env.HOME || '', '.minimax', 'mcp-runtime-names.json')
   if (existsSync(registryPath)) {
     const registry = JSON.parse(readFileSync(registryPath, 'utf8'))
-    const entry = (registry.servers || []).find((s) => s.raw === 'firefox-browser')
+    // The entry the host injects is keyed by the PLUGIN NAME from the
+    // manifest. Looking it up by the raw server name picks the wrong one
+    // when a renamed plugin left an older entry behind.
+    const entry = findPluginEntry(registry.servers, manifest ? manifest.name : '')
     if (!entry) {
       ok('host registry: this plugin is not registered with the host')
     } else {
-      const registered = (entry.tools || []).map((t) => t.raw)
-      const missing = catalogue.filter((name) => !registered.includes(name))
-      const extra = registered.filter((name) => !catalogue.includes(name))
-      if (missing.length || extra.length) {
+      // The server trims its tool list to the active preset before the host
+      // lists it, so the host legitimately registers the PRESET's tools —
+      // not the whole catalogue.
+      const cmp = compareEntry(entry, { catalogue })
+      if (cmp.missing.length || cmp.unknown.length) {
         // A WARNING, not a failure: the package is valid, but the HOST has
         // an older list of this plugin's tools, so it injects a catalogue
         // that no longer matches the code.
         warn(
-          'host registry: stale — the host knows ' +
-            `${registered.length} tools, the code has ${catalogue.length}` +
-            (missing.length ? `; missing: ${missing.join(', ')}` : '') +
-            (extra.length ? `; unknown: ${extra.join(', ')}` : ''),
+          'host registry: out of step — the host knows ' +
+            `${cmp.registered.length} tools, the ${DEFAULT_PRESET} preset exposes ${cmp.expected.length}` +
+            (cmp.missing.length ? `; missing: ${cmp.missing.join(', ')}` : '') +
+            (cmp.unknown.length ? `; unknown: ${cmp.unknown.join(', ')}` : ''),
         )
       } else {
-        ok(`host registry: in step (${registered.length} tools)`)
+        ok(
+          `host registry: in step (${cmp.registered.length} tools` +
+            (cmp.wider.length ? `, ${cmp.wider.length} beyond the ${DEFAULT_PRESET} preset` : '') +
+            ')',
+        )
       }
     }
   }
