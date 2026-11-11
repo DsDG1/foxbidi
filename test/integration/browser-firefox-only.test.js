@@ -5,7 +5,7 @@
 // request interception are the things a CDP-based harness structurally
 // cannot do — so they are worth proving against a real Firefox.
 //
-// The browser here is started with `--remote-enable-system-access`, which is
+// The browser here is started with `--remote-allow-system-access`, which is
 // what unlocks the privileged about: pages. It uses a THROWAWAY profile copy
 // in a temp directory; the user's own Firefox profile is never opened or
 // modified.

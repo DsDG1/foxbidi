@@ -128,6 +128,30 @@ describe('launcher.buildFirefoxArgs', () => {
     const args = buildFirefoxArgs({ port: 9333, profileDir: '/tmp/p' })
     assert.ok(args.includes('about:blank'))
   })
+
+  test('asks for system access with the flag Firefox actually reads', () => {
+    // Firefox 138 shipped `--remote-enable-system-access`; the name the
+    // browser has documented since — and the only one Firefox 153 honours —
+    // is `--remote-allow-system-access`. Firefox 153 also made an `about:`
+    // navigation REQUIRE system access, so a stale flag name is not a
+    // cosmetic difference: every privileged navigation fails with "not
+    // allowed in this context".
+    const args = buildFirefoxArgs({ port: 9333, profileDir: '/tmp/p', privileged: true })
+    assert.ok(
+      args.includes('--remote-allow-system-access'),
+      `expected --remote-allow-system-access, got ${args.join(' ')}`,
+    )
+    assert.equal(
+      args.includes('--remote-enable-system-access'),
+      false,
+      'the pre-rename flag name must not be passed',
+    )
+  })
+
+  test('does not ask for system access unless it was requested', () => {
+    const args = buildFirefoxArgs({ port: 9333, profileDir: '/tmp/p' })
+    assert.equal(args.includes('--remote-allow-system-access'), false)
+  })
 })
 
 // ---------------------------------------------------------------------------

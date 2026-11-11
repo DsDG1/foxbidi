@@ -20,7 +20,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { dirname, resolve } from 'node:path'
+import { dirname, resolve, basename, isAbsolute } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const absPath = (rel) => pathToFileURL(resolve(HERE, '..', rel)).href
@@ -31,11 +31,14 @@ const {
   profileFingerprint,
   copyProfile,
   ensureProfileCopy,
+  ensureFreshProfile,
+  profileFromEnvironment,
   removeProfileCopy,
   profileCopyPath,
   profileCopyTtlHours,
   isProfileCopyExpired,
   removeStaleProfileCopies,
+  resolveSourceProfile,
 } = await import(absPath('lib/firefox/profile.js'))
 
 let tmpRoot
@@ -132,6 +135,111 @@ describe('profile.detectUserProfile', () => {
     const base = mkdtempSync(join(tmpRoot, 'ff-empty-'))
     writeFileSync(join(base, 'profiles.ini'), '[Profile0]\nPath=gone.default\nDefault=1\n')
     assert.equal(detectUserProfile(base), null)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// profileFromEnvironment
+// ---------------------------------------------------------------------------
+
+describe('profile.profileFromEnvironment', () => {
+  test('returns null when the variable is unset', () => {
+    assert.equal(profileFromEnvironment({}), null)
+  })
+
+  test('returns null for a blank value', () => {
+    assert.equal(profileFromEnvironment({ FIREFOX_BROWSER_PROFILE: '   ' }), null)
+  })
+
+  test('returns the pinned path', () => {
+    const p = profileFromEnvironment({ FIREFOX_BROWSER_PROFILE: '/tmp/pinned-profile' })
+    assert.equal(p, '/tmp/pinned-profile')
+  })
+
+  test('resolves a relative path to an absolute one', () => {
+    const p = profileFromEnvironment({ FIREFOX_BROWSER_PROFILE: 'relative/profile' })
+    assert.ok(isAbsolute(p), `expected an absolute path, got ${p}`)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ensureFreshProfile
+// ---------------------------------------------------------------------------
+
+describe('profile.ensureFreshProfile', () => {
+  test('creates the directory', () => {
+    const res = ensureFreshProfile(join(tmpRoot, 'fresh-base'))
+    assert.equal(res.ok, true)
+    assert.ok(existsSync(res.dir), 'the fresh profile must exist')
+    assert.ok(statSync(res.dir).isDirectory())
+  })
+
+  test('the name does not start with profile-', () => {
+    // That prefix marks the profile COPIES, and the stale-copy cleanup
+    // deletes every profile-* directory except the one it is told to keep.
+    const res = ensureFreshProfile(join(tmpRoot, 'fresh-base-2'))
+    assert.ok(
+      !basename(res.dir).startsWith('profile-'),
+      `the fresh profile must not look like a copy: ${basename(res.dir)}`,
+    )
+  })
+
+  test('survives the stale-copy cleanup', () => {
+    const base = join(tmpRoot, 'fresh-base-3')
+    const fresh = ensureFreshProfile(base)
+    removeStaleProfileCopies(base, profileCopyPath(base, fresh.dir))
+    assert.ok(existsSync(fresh.dir), 'the fresh profile must survive the stale-copy cleanup')
+  })
+
+  test('reuses the same directory on a second call', () => {
+    const base = join(tmpRoot, 'fresh-base-4')
+    const a = ensureFreshProfile(base)
+    const b = ensureFreshProfile(base)
+    assert.equal(a.dir, b.dir)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resolveSourceProfile
+// ---------------------------------------------------------------------------
+
+describe('profile.resolveSourceProfile', () => {
+  test('an explicit profile wins over everything', () => {
+    const res = resolveSourceProfile({
+      explicit: '/tmp/explicit',
+      detected: '/tmp/detected',
+      copyBase: join(tmpRoot, 'rs-base'),
+    })
+    assert.equal(res.srcProfile, '/tmp/explicit')
+    assert.equal(res.fresh, false)
+  })
+
+  test('the detected user profile wins over a fresh one', () => {
+    const res = resolveSourceProfile({
+      detected: '/tmp/detected',
+      copyBase: join(tmpRoot, 'rs-base-2'),
+    })
+    assert.equal(res.srcProfile, '/tmp/detected')
+    assert.equal(res.fresh, false)
+  })
+
+  test('a machine without a user profile gets a fresh one', () => {
+    // The case that broke CI: Firefox installed, never launched, no profile.
+    const res = resolveSourceProfile({ copyBase: join(tmpRoot, 'rs-base-3') })
+    assert.equal(res.fresh, true)
+    assert.ok(existsSync(res.srcProfile), 'the fresh profile must exist')
+  })
+
+  test('an explicit profile never falls back to a fresh one', () => {
+    // The operator pinned a path; a missing one is reported by the copy
+    // step, not silently replaced by an empty profile.
+    const missing = join(tmpRoot, 'does-not-exist')
+    const res = resolveSourceProfile({
+      explicit: missing,
+      copyBase: join(tmpRoot, 'rs-base-4'),
+    })
+    assert.equal(res.srcProfile, missing)
+    assert.equal(res.fresh, false)
   })
 })
 
@@ -297,6 +405,26 @@ describe('profile.ensureProfileCopy', () => {
   test('reports an error when there is no source', () => {
     const res = ensureProfileCopy({ srcDir: '', destDir: join(tmpRoot, 'x') })
     assert.equal(res.ok, false)
+  })
+
+  test('a forced re-copy clears the lock markers of a killed browser', () => {
+    // A Firefox that was killed rather than stopped leaves its lock markers
+    // behind. Reusing such a copy carries them into the next launch, and
+    // Firefox refuses to start on a locked profile — "Firefox is already
+    // running, but is not responding". This is why the FRESH profile (whose
+    // fingerprint never changes, so the copy would be reused forever) is
+    // rebuilt on every start instead.
+    const src = mkdtempSync(join(tmpRoot, 'ens-src5-'))
+    const dest = join(tmpRoot, 'ens-dest5-')
+
+    ensureProfileCopy({ srcDir: src, destDir: dest })
+    writeFileSync(join(dest, '.parentlock'), '')
+    symlinkSync('127.0.1.1:+1234', join(dest, 'lock'))
+
+    const forced = ensureProfileCopy({ srcDir: src, destDir: dest, force: true })
+    assert.equal(forced.ok, true)
+    assert.ok(!existsSync(join(dest, '.parentlock')), 'the stale lock file must be gone')
+    assert.ok(!existsSync(join(dest, 'lock')), 'the stale lock symlink must be gone')
   })
 })
 

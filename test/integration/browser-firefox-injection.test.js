@@ -52,12 +52,23 @@ describe('injection warnings (live browser)', { skip }, () => {
   let provider
   let tmpRoot
   let pageUrl
+  let cleanUrl
 
   before(async () => {
     tmpRoot = mkdtempSync(join(tmpdir(), 'ffbrowser-injection-'))
     const file = join(tmpRoot, 'page.html')
     writeFileSync(file, PAGE, 'utf8')
     pageUrl = pathToFileURL(file).href
+    // The clean page is a FILE, not a `data:` URL. Firefox 153 refuses a
+    // `data:` navigation that follows a `file:` one unless the browser was
+    // started with system access — the `data:` URL would inherit the file's
+    // origin. The plugin does not enable system access by default, so a
+    // `data:` fixture would make this suite depend on a privileged browser
+    // for no reason: what is under test here is the warning state, not the
+    // URL scheme.
+    const cleanFile = join(tmpRoot, 'clean.html')
+    writeFileSync(cleanFile, '<!doctype html><html><body><h1>Clean</h1></body></html>', 'utf8')
+    cleanUrl = pathToFileURL(cleanFile).href
 
     provider = new FirefoxProvider({
       bin: firefoxBin,
@@ -141,7 +152,7 @@ describe('injection warnings (live browser)', { skip }, () => {
     const before = await provider.text(undefined, { maxChars: 4000 })
     assert.ok(before.warnings.length > 0, 'the page must warn before navigating')
 
-    await provider.navigate('data:text/html,<h1>Clean</h1>')
+    await provider.navigate(cleanUrl)
     const after = await provider.text(undefined, { maxChars: 4000 })
     assert.deepEqual(after.warnings, [], 'a clean page must not inherit warnings')
     assert.deepEqual(after.signals, [], 'a clean page must not inherit signals')

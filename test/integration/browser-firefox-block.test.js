@@ -46,16 +46,36 @@ const PAGE = `<!doctype html>
   </form>
 </body></html>`
 
+// A page with no hidden content: the form and the button are the same, but
+// nothing on it tries to steer the agent.
+//
+// It is a FILE rather than a `data:` URL. Firefox 153 refuses a `data:`
+// navigation that follows a `file:` one unless the browser runs with system
+// access (the `data:` URL would inherit the file's origin), and the plugin
+// does not enable system access by default.
+const CLEAN_PAGE = `<!doctype html>
+<html><head><title>Clean</title></head>
+<body>
+  <h1>Clean heading</h1>
+  <form id="f" method="post" action="https://x.example">
+    <button type="submit">Send</button>
+  </form>
+</body></html>`
+
 describe('the injection hard block (live browser)', { skip }, () => {
   let provider
   let tmpRoot
   let pageUrl
+  let cleanUrl
 
   before(async () => {
     tmpRoot = mkdtempSync(join(tmpdir(), 'ffbrowser-block-'))
     const file = join(tmpRoot, 'page.html')
     writeFileSync(file, PAGE, 'utf8')
     pageUrl = pathToFileURL(file).href
+    const cleanFile = join(tmpRoot, 'clean.html')
+    writeFileSync(cleanFile, CLEAN_PAGE, 'utf8')
+    cleanUrl = pathToFileURL(cleanFile).href
 
     provider = new FirefoxProvider({
       bin: firefoxBin,
@@ -144,9 +164,7 @@ describe('the injection hard block (live browser)', { skip }, () => {
   })
 
   test('a clean page is not blocked', async () => {
-    await provider.navigate(
-      'data:text/html,<form method="post" action="https://x.example"><button>Send</button></form>',
-    )
+    await provider.navigate(cleanUrl)
     const snap = await provider.snapshot(undefined, { maxElements: 50 })
     const submitRef = snap.elements.find((e) => e.role === 'button' && e.name === 'Send')
     assert.ok(submitRef, 'the submit button must be in the snapshot')

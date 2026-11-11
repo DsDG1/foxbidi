@@ -223,11 +223,23 @@ describe('2.0 capabilities (live browser)', { skip }, () => {
   })
 
   test('a capability the browser lacks is reported as unavailable, not as a raw error', async () => {
-    // Response bodies need Firefox 144+; on an older build the tool must say
-    // so in a way the agent can act on.
+    // Response bodies need Firefox 144+. On an OLDER build the tool must say
+    // so in a way the agent can act on. On a NEWER build the capability is
+    // there, so an unknown request id is a plain error — and that error must
+    // NOT be dressed up as "this browser cannot do it".
+    const caps = await provider.probeCapabilities()
     const result = await provider.network({ requestId: 'no-such-request' })
     assert.equal(result.ok, true)
-    if (result.bodyAvailable === false) {
+    if (caps.features.networkBodies) {
+      assert.equal(result.bodyAvailable, false, 'an unknown request id has no body')
+      assert.equal(
+        result.reason,
+        undefined,
+        'the capability exists — this is not a version problem',
+      )
+      assert.ok(result.bodyError, 'the failure must say what went wrong')
+    } else {
+      assert.equal(result.bodyAvailable, false)
       assert.equal(result.reason, 'requires Firefox >= 144')
       assert.ok(result.hint, 'the agent must get an alternative')
     }

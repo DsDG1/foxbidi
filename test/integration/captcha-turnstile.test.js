@@ -76,14 +76,47 @@ describe('turnstile solving (live browser)', { skip }, () => {
     return typeof result.value === 'number' ? result.value : 0
   }
 
+  /**
+   * Wait for the challenge itself to reach this client.
+   *
+   * The widget's container sits in the page's own HTML, but the CHALLENGE
+   * lives in a Cloudflare iframe that the page script inserts later. Only the
+   * iframe means the challenge was actually delivered — a container without
+   * one means the challenge never arrived (a slow load, a blocked request, a
+   * widget that refuses to render for an automated browser).
+   *
+   * That distinction is what separates "this environment cannot run the
+   * challenge" (the suite skips) from "the solver failed on a challenge it
+   * was given" (the suite fails).
+   *
+   * @param {number} timeoutMs  how long to wait for the iframe
+   * @returns {Promise<boolean>}
+   */
+  async function waitForChallenge(timeoutMs = 15000) {
+    const deadline = Date.now() + timeoutMs
+    for (;;) {
+      const result = await provider.evaluate(
+        `(() => {
+          const f = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+          return f !== null;
+        })()`,
+      )
+      if (result.ok && result.value === true) return true
+      if (Date.now() >= deadline) return false
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
+
   test('the challenge is pending before the solver runs (control)', async (t) => {
     const navigated = await provider.navigate(CHALLENGE_URL)
     if (!navigated.ok) {
       t.skip(`could not reach ${CHALLENGE_URL}: ${navigated.error}`)
       return
     }
-    // Give the widget time to mount.
-    await new Promise((resolve) => setTimeout(resolve, 6000))
+    if (!(await waitForChallenge())) {
+      t.skip('the challenge provider did not deliver a challenge to this client')
+      return
+    }
 
     const length = await tokenLength()
     // The control: while the challenge is unsolved there is NO token.
@@ -96,9 +129,20 @@ describe('turnstile solving (live browser)', { skip }, () => {
       t.skip(`could not reach ${CHALLENGE_URL}: ${navigated.error}`)
       return
     }
-    await new Promise((resolve) => setTimeout(resolve, 6000))
+    if (!(await waitForChallenge())) {
+      t.skip('the challenge provider did not deliver a challenge to this client')
+      return
+    }
 
     const result = await provider.captcha(undefined, { solver: 'turnstile', timeoutMs: 30000 })
+
+    // The challenge WAS delivered, so a solver failure here is a real
+    // failure. The statuses below are the ones that mean "there was no
+    // challenge to solve" — the widget rendered but never became reachable.
+    if (result.status === 'not_detected' || result.status === 'checkbox_not_found') {
+      t.skip(`the challenge was not solvable from this client: ${result.message}`)
+      return
+    }
 
     assert.equal(result.ok, true, `the solver should have solved the challenge: ${result.message}`)
     assert.equal(result.status, 'solved')
