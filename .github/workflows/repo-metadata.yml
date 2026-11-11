@@ -41,8 +41,14 @@ jobs:
         run: |
           # GITHUB_TOKEN cannot do this: updating a repository needs the
           # Administration permission, which an Actions token does not carry.
-          # A classic PAT with the 'repo' scope does it, and the workflow
-          # stays a no-op until one is configured.
+          # A token that DOES carry it can — and the workflow stays a no-op
+          # until one is configured.
+          #
+          # This sync is a convenience, not a gate: the repository's CI must
+          # not turn red because a description could not be written. A token
+          # that cannot do the job is therefore reported as a WARNING and the
+          # step still succeeds; anything else — a malformed request, a
+          # network failure — stays a failure.
           if [ -z "$REPO_METADATA_TOKEN" ]; then
             echo "No REPO_METADATA_TOKEN secret configured — leaving the metadata alone."
             exit 0
@@ -50,6 +56,13 @@ jobs:
           jq -n --arg d "$DESCRIPTION" --arg h "$HOMEPAGE" --argjson t "$TOPICS" \
             '{description: $d, homepage: $h, topics: $t}' > /tmp/body.json
           if ! out=$(GH_TOKEN="$REPO_METADATA_TOKEN" gh api --method PATCH "repos/${{ github.repository }}" --input /tmp/body.json 2>&1); then
+            # 403 means the token is valid but may not administer this
+            # repository. A GitHub App installation token never can — only a
+            # classic PAT with Administration rights on the repository does.
+            if printf '%s' "$out" | grep -qE '"status":"403"|\(HTTP 403\)'; then
+              echo "::warning::REPO_METADATA_TOKEN cannot administer this repository (HTTP 403) — leaving the metadata alone. It needs a classic PAT with the Administration permission on this repository."
+              exit 0
+            fi
             echo "::error::gh api failed: ${out}"
             exit 1
           fi

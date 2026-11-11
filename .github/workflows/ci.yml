@@ -68,16 +68,30 @@ jobs:
 
       - name: Integration tests
         run: |
+          # The log is kept so the reason can be published; `|| true` keeps
+          # the step alive long enough to write that reason into the summary.
           npm run test:integration 2>&1 | tee /tmp/integration.log || true
           {
             echo '### Integration tests'
             echo '```'
-            tail -100 /tmp/integration.log
+            if grep -q 'failing tests:' /tmp/integration.log; then
+              # The reporter prints the failure detail at the END of the run,
+              # under "failing tests:". That is the part a reader needs — and
+              # a plain tail of the log can push it out of view.
+              awk '/failing tests:/{flag=1} flag' /tmp/integration.log | head -150
+            else
+              tail -60 /tmp/integration.log
+            fi
+            echo '```'
+            echo '### Totals'
+            echo '```'
+            LC_ALL=C grep -E '^[^[:alnum:]]*(tests|suites|pass|fail|cancelled|skipped|todo) [0-9]+$' \
+              /tmp/integration.log || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if grep -q 'fail 0' /tmp/integration.log; then
+          if LC_ALL=C grep -qE '^[^[:alnum:]]*fail 0$' /tmp/integration.log; then
             echo 'every integration test passed'
           else
-            echo '::error::integration tests failed — the tail of the run is in the step summary'
+            echo '::error::integration tests failed — the reason is in the step summary'
             exit 1
           fi
