@@ -5,6 +5,41 @@ All notable changes to the `firefox-browser` plugin are documented here.
 This project follows [Keep a Changelog](https://keepachangelog.com/), and
 versions follow `MAJOR.MINOR.PATCH`.
 
+## Unreleased
+
+CI 从 v2.9.1 起一直是红的，根因有三层，都不是测试本身的问题——测试是对的，
+被测的东西在新的 Firefox 上已经不一样了。
+
+### Fixed
+
+- **没有用户 profile 的机器现在也能启动**。provider 以前找不到 profile 就直接
+  失败（`no Firefox profile found`），而"装了 Firefox 但从没打开过"的机器正是
+  没有 profile——CI runner、容器、新机器都算。浏览器自己第一次运行就会建一个，
+  插件没理由比浏览器更严格。现在会退回到一个全新的空 profile（`fresh`），
+  并在 `browser_status` 里如实标出来。
+- **`FIREFOX_BROWSER_PROFILE` 现在 provider 自己也认**。以前只有 `server.js`
+  读到它，错误信息却让操作者去设这个变量——provider 自己并不读，指了条死路。
+- **特权访问的开关名换过，插件还在用旧名**。Firefox 138 引入的是
+  `--remote-enable-system-access`，Firefox 153 只认
+  `--remote-allow-system-access`。而 Firefox 153 同时把 `about:` 页面的导航
+  改成"必须开启系统访问"（Mozilla bug 2048451），于是插件的每一次特权导航
+  都报 `Navigation to "about:addons" is not allowed in this context`。
+  Firefox 140 之前根本不检查这个标志，所以旧名字一直没被发现。
+  同时补上 Firefox 159 改用的 `MOZ_REMOTE_ALLOW_SYSTEM_ACCESS` 环境变量
+  （Firefox 159 删掉了命令行参数本身）。
+- **扩展列表在 Firefox 153 上读不到了**。`about:addons` 页面不再暴露
+  `AddonManager.getAllAddons()`，列表搬到了父进程的 `ExtensionParent`。
+  两条路都留着，返回同一种形状。
+
+### Changed
+
+- **CI 的集成测试步骤会把失败原因写进 step summary**：失败详情在运行末尾的
+  `failing tests:` 段里，单纯的 tail 可能会把它挤出视野。现在直接摘那一段，
+  并附上 totals。
+- **repo-metadata 工作流不再因为令牌权限不足而整体变红**：改仓库信息是顺手
+  做的事，不是关卡。令牌拿不到 Administration 权限时记一条 warning 就走；
+  其它错误（请求本身坏了、网络挂了）仍然是失败。
+
 ## v2.9.1 — 2026-11-10
 
 插件**从宿主里消失**了——不是被禁用，是宿主根本没扫到它。这版把根因修掉，

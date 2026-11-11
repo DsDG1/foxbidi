@@ -124,6 +124,11 @@ its profile. Copying the profile and launching a second instance against the
 copy is therefore the only way to drive a Firefox that carries a real session.
 The copy is a snapshot — tabs are not shared.
 
+When the machine has no Firefox profile at all — Firefox installed but never
+launched, so no `profiles.ini` and no profile directory — the plugin does not
+give up: it creates a fresh, empty profile and drives that. A CI runner, a
+container or a new laptop is a perfectly normal place to run this.
+
 ### The CLI entry point
 
 Tools normally reach the agent through an MCP client. The repository also ships
