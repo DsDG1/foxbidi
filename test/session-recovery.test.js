@@ -181,4 +181,70 @@ describe('restart', () => {
     assert.equal(result.restarted, true)
     assert.equal(result.sessionId, 'sess-2')
   })
+
+  test('kills retained Firefox PID when _adoptRetained fails so profile lock is freed', async () => {
+    const provider = new FirefoxProvider({ bin: '' })
+    provider._retained = { port: 9999, pid: 77777 }
+    provider.pid = 77777
+    provider._adoptRetained = async () => ({ ok: false, error: 'unreachable' })
+    const killedPids = []
+    provider._killProcessAndWait = async (pid) => {
+      killedPids.push(pid)
+      return true
+    }
+    // Force locate Firefox to fail cleanly after _retained cleanup so no real process spawns
+    const prevEnv = process.env.FIREFOX_BROWSER_BIN
+    process.env.FIREFOX_BROWSER_BIN = '/nonexistent/firefox'
+    provider.opts.bin = '/nonexistent/firefox'
+    try {
+      await provider.start()
+    } finally {
+      if (prevEnv === undefined) delete process.env.FIREFOX_BROWSER_BIN
+      else process.env.FIREFOX_BROWSER_BIN = prevEnv
+    }
+    assert.deepEqual(killedPids, [77777])
+    assert.equal(provider._retained, null)
+    assert.equal(provider.pid, null)
+  })
+
+  test('_onInterceptedRequest ignores unblocked beforeRequestSent events and sends replies unqueued', async () => {
+    const provider = new FirefoxProvider()
+    const unqueued = []
+    provider.client = {
+      send: async () => {
+        throw new Error('must not use serialized queue')
+      },
+      sendUnqueued: async (method, params) => {
+        unqueued.push({ method, params })
+        return {}
+      },
+    }
+    provider._interceptors.set('int-1', { patterns: ['ads.example'] })
+
+    // Unblocked event should be ignored
+    provider._onInterceptedRequest({
+      isBlocked: false,
+      request: { request: 'req-unblocked', url: 'https://ads.example/pixel.js' },
+    })
+    assert.equal(unqueued.length, 0)
+
+    // Blocked matching event should failRequest unqueued
+    provider._onInterceptedRequest({
+      isBlocked: true,
+      request: { request: 'req-blocked', url: 'https://ads.example/pixel.js' },
+    })
+    // Blocked non-matching event should continueRequest unqueued
+    provider._onInterceptedRequest({
+      isBlocked: true,
+      request: { request: 'req-allowed', url: 'https://app.example/main.js' },
+    })
+    await new Promise((r) => setTimeout(r, 10))
+    assert.deepEqual(
+      unqueued.map((c) => [c.method, c.params.request]),
+      [
+        ['network.failRequest', 'req-blocked'],
+        ['network.continueRequest', 'req-allowed'],
+      ],
+    )
+  })
 })

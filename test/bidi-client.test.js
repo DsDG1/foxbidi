@@ -294,6 +294,33 @@ describe('bidi client', () => {
     )
   })
 
+  test('rejects pending commands immediately when close() is called locally', async () => {
+    const server = await startServer(() => null)
+
+    const c = await connectClient(server.port, { timeoutMs: 10000 })
+    const pending = c.send('pending.command')
+    await new Promise((r) => setTimeout(r, 20))
+    const started = Date.now()
+    c.close()
+    await assert.rejects(
+      () => pending,
+      (err) => {
+        assert.ok(err instanceof BidiError)
+        assert.equal(err.code, 'connection_closed')
+        return true
+      },
+    )
+    assert.ok(Date.now() - started < 500, 'close() must reject pending commands immediately')
+  })
+
+  test('deduplicates concurrent connect() calls onto a single socket', async () => {
+    const server = await startServer(() => null)
+    const c = new BidiClient({ port: server.port, timeoutMs: 5000 })
+    openClients.add(c)
+    await Promise.all([c.connect(), c.connect(), c.connect()])
+    assert.equal(server.sockets.length, 1)
+  })
+
   test('serializes commands so a later one cannot overtake an earlier one', async () => {
     const order = []
     const server = await startServer((msg) => {

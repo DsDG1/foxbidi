@@ -13,6 +13,9 @@ import {
   encodeCombo,
   buildKeyActions,
   pressKeys,
+  typeText,
+  clearElement,
+  scroll,
   KEY_CODES,
   MODIFIER_KEYS,
 } from '../lib/firefox/inputs.js'
@@ -48,6 +51,7 @@ function shape(actions) {
     [KEY_CODES.ALT, 'ALT'],
     [KEY_CODES.META, 'META'],
     [KEY_CODES.ENTER, 'ENTER'],
+    [KEY_CODES.TAB, 'TAB'],
     [KEY_CODES.ESCAPE, 'ESCAPE'],
   ])
   return actions.map((a) => `${a.type}:${names.get(a.value) ?? a.value}`)
@@ -177,5 +181,108 @@ describe('pressKeys', () => {
     const { client, sent } = recordingClient()
     await pressKeys(client, { context: 'ctx', keys: [] })
     assert.equal(sent.length, 0)
+  })
+})
+
+describe('typeText, clearElement, and scroll', () => {
+  test('typeText maps LF, CRLF, and tabs to WebDriver ENTER and TAB code points', async () => {
+    const { client, sent } = recordingClient()
+    await typeText(client, { context: 'ctx', text: 'a\r\nb\nc\td' })
+    assert.equal(sent.length, 1)
+    const actions = sent[0].params.actions[0].actions
+    assert.deepEqual(shape(actions), [
+      'keyDown:a',
+      'keyUp:a',
+      'keyDown:ENTER',
+      'keyUp:ENTER',
+      'keyDown:b',
+      'keyUp:b',
+      'keyDown:ENTER',
+      'keyUp:ENTER',
+      'keyDown:c',
+      'keyUp:c',
+      'keyDown:TAB',
+      'keyUp:TAB',
+      'keyDown:d',
+      'keyUp:d',
+    ])
+  })
+
+  test('clearElement clears contenteditable elements as well as inputs', async () => {
+    let capturedFn = null
+    const client = {
+      send: async (_method, params) => {
+        capturedFn = params.functionDeclaration
+        return { result: { type: 'boolean', value: true } }
+      },
+    }
+    const ok = await clearElement(client, { context: 'ctx', selector: '#editor' })
+    assert.equal(ok, true)
+    assert.match(capturedFn, /isContentEditable/)
+
+    // Evaluate the page-side function against a fake contenteditable element.
+    const fakeEl = {
+      isContentEditable: true,
+      textContent: 'Hello world',
+      events: [],
+      getAttribute: () => 'true',
+      dispatchEvent(ev) {
+        this.events.push(ev.type)
+      },
+    }
+    globalThis.document = { querySelector: () => fakeEl }
+    try {
+      const fn = new Function(`return (${capturedFn})`)()
+      const cleared = fn('', '', '#editor')
+      assert.equal(cleared, true)
+      assert.equal(fakeEl.textContent, '')
+      assert.deepEqual(fakeEl.events, ['input'])
+    } finally {
+      delete globalThis.document
+    }
+  })
+
+  test('scroll supports directional scrolling on overflow containers and rect-based movement', async () => {
+    let capturedFn = null
+    let capturedArgs = null
+    const client = {
+      send: async (_method, params) => {
+        capturedFn = params.functionDeclaration
+        capturedArgs = params.arguments
+        return {
+          result: {
+            type: 'object',
+            value: [
+              ['ok', { type: 'boolean', value: true }],
+              ['scrollY', { type: 'number', value: 250 }],
+              ['moved', { type: 'boolean', value: true }],
+            ],
+          },
+        }
+      },
+    }
+    await scroll(client, { context: 'ctx', selector: '#modal', direction: 'down', amount: 250 })
+    assert.equal(capturedArgs[5].value, true, 'explicitDirection must be true when direction given')
+
+    // Run page-side function on a fake overflow container.
+    const fakeContainer = {
+      scrollHeight: 1000,
+      clientHeight: 300,
+      scrollTop: 0,
+      scrollBy(_x, dy) {
+        this.scrollTop += dy
+      },
+    }
+    globalThis.window = { scrollY: 0 }
+    globalThis.document = { querySelector: () => fakeContainer }
+    try {
+      const fn = new Function(`return (${capturedFn})`)()
+      const out = fn('', '', '#modal', 'down', 250, true)
+      assert.deepEqual(out, { ok: true, scrollY: 250, moved: true })
+      assert.equal(fakeContainer.scrollTop, 250)
+    } finally {
+      delete globalThis.window
+      delete globalThis.document
+    }
   })
 })

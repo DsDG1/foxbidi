@@ -56,8 +56,21 @@ describe('DialogManager', () => {
     assert.equal(dialogs.open().length, 0)
     const sent = client.sent.find((c) => c.method === 'browsingContext.handleUserPrompt')
     assert.ok(sent, 'the dialog must be closed with handleUserPrompt')
-    assert.equal(sent.params.action, 'dismiss')
+    assert.equal(sent.params.accept, false)
     assert.equal(sent.params.context, 'ctx-1')
+  })
+
+  test('the default autoDismiss policy accepts beforeunload so navigation proceeds', async () => {
+    const dialogs = new DialogManager()
+    const client = fakeClient()
+    dialogs.onPromptOpened({ context: 'ctx-1', type: 'beforeunload', message: 'Leave page?' })
+
+    const handled = await dialogs.autoHandle(client)
+
+    assert.equal(handled.length, 1)
+    assert.equal(handled[0].handled, 'accept')
+    const sent = client.sent.find((c) => c.method === 'browsingContext.handleUserPrompt')
+    assert.equal(sent.params.accept, true)
   })
 
   test('the autoAccept policy accepts the dialog', async () => {
@@ -68,7 +81,7 @@ describe('DialogManager', () => {
     await dialogs.autoHandle(client)
 
     const sent = client.sent.find((c) => c.method === 'browsingContext.handleUserPrompt')
-    assert.equal(sent.params.action, 'accept')
+    assert.equal(sent.params.accept, true)
   })
 
   test('the manual policy leaves the dialog open', async () => {
@@ -96,8 +109,8 @@ describe('DialogManager', () => {
     assert.equal(result.ok, true)
     assert.equal(result.handled, 'acceptWithText')
     const sent = client.sent.find((c) => c.method === 'browsingContext.handleUserPrompt')
-    assert.equal(sent.params.action, 'acceptAndSetPromptText')
-    assert.equal(sent.params.promptText, 'alice')
+    assert.equal(sent.params.accept, true)
+    assert.equal(sent.params.userText, 'alice')
   })
 
   test('handling a dialog that is not open says so plainly', async () => {

@@ -7,7 +7,14 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { NetworkLog, sanitizeUrl, statusBucket, MAX_ENTRIES } from '../lib/firefox/network.js'
+import { EventEmitter } from 'node:events'
+import {
+  NetworkLog,
+  attachNetworkLog,
+  sanitizeUrl,
+  statusBucket,
+  MAX_ENTRIES,
+} from '../lib/firefox/network.js'
 
 describe('network url redaction', () => {
   test('a query string never survives', () => {
@@ -63,6 +70,7 @@ describe('network status buckets', () => {
     assert.equal(statusBucket(404), '4xx')
     assert.equal(statusBucket(500), '5xx')
     assert.equal(statusBucket(503), '5xx')
+    assert.equal(statusBucket(null, 'NS_ERROR_NET_RESET'), 'error')
   })
 
   test('an unknown status is pending', () => {
@@ -140,5 +148,59 @@ describe('network log', () => {
     log.record({ url: 'https://example.com/one' })
     log.clear()
     assert.equal(log.query().total, 0)
+  })
+
+  test('correlates beforeRequestSent with responseCompleted and fetchError by requestId', async () => {
+    const log = new NetworkLog()
+    const client = new EventEmitter()
+    client.send = async () => ({})
+    await attachNetworkLog(client, log)
+
+    client.emit('event', 'network.beforeRequestSent', {
+      context: 'ctx-1',
+      type: 'fetch',
+      request: { request: 'req-10', method: 'POST', url: 'https://api.example.com/items?secret=1' },
+    })
+    assert.equal(log.pendingCount('ctx-1'), 1)
+    assert.equal(log.pendingCount('ctx-other'), 0)
+
+    client.emit('event', 'network.responseCompleted', {
+      context: 'ctx-1',
+      type: 'fetch',
+      request: {
+        request: 'req-10',
+        method: 'POST',
+        url: 'https://api.example.com/items?secret=1',
+        timings: { requestStart: 100, responseEnd: 145 },
+      },
+      response: { status: 201, mimeType: 'application/json', bytesReceived: 64 },
+    })
+
+    assert.equal(log.pendingCount('ctx-1'), 0)
+    assert.equal(log.entries.length, 1, 'responseCompleted must update the existing entry')
+    const [done] = log.query().requests
+    assert.equal(done.requestId, 'req-10')
+    assert.equal(done.status, 201)
+    assert.equal(done.bucket, '2xx')
+    assert.equal(done.durationMs, 45)
+    assert.equal(done.url, 'https://api.example.com/items')
+
+    client.emit('event', 'network.beforeRequestSent', {
+      context: 'ctx-1',
+      type: 'fetch',
+      request: { request: 'req-11', method: 'GET', url: 'https://api.example.com/fail' },
+    })
+    client.emit('event', 'network.fetchError', {
+      context: 'ctx-1',
+      type: 'fetch',
+      request: { request: 'req-11', method: 'GET', url: 'https://api.example.com/fail' },
+      errorText: 'NS_ERROR_CONNECTION_REFUSED',
+    })
+
+    assert.equal(log.pendingCount('ctx-1'), 0)
+    const errors = log.query({ status: ['error'] })
+    assert.equal(errors.total, 1)
+    assert.equal(errors.requests[0].requestId, 'req-11')
+    assert.equal(errors.requests[0].bucket, 'error')
   })
 })

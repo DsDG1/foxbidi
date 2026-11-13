@@ -190,4 +190,124 @@ describe('provider.snapshot', () => {
     const call = snapshotCall(client)
     assert.equal(call.params.arguments[5].value, true)
   })
+
+  test('nested iframes are collected recursively when frames="all"', async () => {
+    const client = fakeClient({
+      payload: { elements: [{ ref: 'e0', role: 'button', name: 'Btn' }], total: 1 },
+      tree: [
+        {
+          context: 'ctx-1',
+          url: 'https://example.com',
+          children: [
+            {
+              context: 'frame-outer-1111',
+              url: 'https://outer.example',
+              children: [
+                { context: 'frame-inner-2222', url: 'https://inner.example', children: [] },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const provider = providerWith(client)
+    const result = await provider.snapshot('ctx-1', { frames: 'all' })
+    assert.equal(result.frames.length, 2)
+    assert.equal(result.frames[0].contextId, 'frame-outer-1111')
+    assert.equal(result.frames[1].contextId, 'frame-inner-2222')
+  })
+
+  test('snapshot delta uses the requested snapshotId baseline across interleaved tabs', async () => {
+    const payloads = {
+      'tab-a': [{ ref: 'e0', role: 'button', name: 'Save' }],
+      'tab-b': [
+        { ref: 'e0', role: 'link', name: 'Other tab link 1' },
+        { ref: 'e1', role: 'link', name: 'Other tab link 2' },
+      ],
+    }
+    const client = {
+      async send(method, params) {
+        if (method === 'script.callFunction') {
+          const fn = params.functionDeclaration || ''
+          if (fn.includes('const total = matched.length')) {
+            const els = payloads[params.target.context] || []
+            return { result: toRemoteValue({ elements: els, total: els.length }) }
+          }
+          return { result: { type: 'boolean', value: true } }
+        }
+        return {}
+      },
+    }
+    const provider = providerWith(client)
+    provider._tabUrls.set('tab-a', 'https://alpha.example/settings?token=secret')
+    provider._tabUrls.set('tab-b', 'https://beta.example/home')
+
+    const snap1 = await provider.snapshot('tab-a')
+    assert.equal(snap1.source.origin, 'https://alpha.example')
+
+    const snap2 = await provider.snapshot('tab-b')
+    assert.equal(snap2.source.origin, 'https://beta.example')
+
+    // Mutate tab-a and diff against snap1.snapshotId — tab-b must not pollute the delta.
+    payloads['tab-a'] = [
+      { ref: 'e0', role: 'button', name: 'Saved!' },
+      { ref: 'e1', role: 'button', name: 'Close' },
+    ]
+    const snap3 = await provider.snapshot('tab-a', { since: snap1.snapshotId })
+    assert.ok(snap3.delta)
+    assert.deepEqual(
+      snap3.delta.changed.map((e) => e.ref),
+      ['e0'],
+    )
+    assert.deepEqual(
+      snap3.delta.added.map((e) => e.ref),
+      ['e1'],
+    )
+    assert.deepEqual(snap3.delta.removed, [])
+  })
+
+  test('listTabs returns top-level tabs only while _contextUrl still resolves child frames', async () => {
+    const client = fakeClient({
+      tree: [
+        {
+          context: 'tab-1',
+          url: 'https://example.com/',
+          children: [{ context: 'iframe-1', url: 'https://ads.example.com/', children: [] }],
+        },
+        {
+          context: 'tab-2',
+          url: 'https://docs.example.com/',
+          children: [],
+        },
+      ],
+    })
+    const provider = providerWith(client)
+    const tabs = await provider.listTabs()
+    assert.equal(tabs.length, 2)
+    assert.deepEqual(
+      tabs.map((t) => t.contextId),
+      ['tab-1', 'tab-2'],
+    )
+    assert.equal(await provider._contextUrl('iframe-1'), 'https://ads.example.com/')
+  })
+
+  test('setViewport forwards devicePixelRatio to browsingContext.setViewport', async () => {
+    const client = fakeClient({})
+    const provider = providerWith(client)
+    provider._ensureCapabilities = async () => ({
+      browserVersion: '140.0',
+      features: { setViewport: true },
+    })
+
+    const res = await provider.setViewport(
+      { width: 390, height: 844, devicePixelRatio: 3 },
+      'ctx-1',
+      true,
+    )
+    assert.equal(res.ok, true)
+    assert.equal(res.devicePixelRatio, 3)
+    const vpCall = client.calls.find((c) => c.method === 'browsingContext.setViewport')
+    assert.ok(vpCall)
+    assert.equal(vpCall.params.devicePixelRatio, 3)
+  })
 })

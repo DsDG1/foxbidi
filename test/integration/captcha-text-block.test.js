@@ -13,11 +13,21 @@
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SERVER_ENTRY = resolve(HERE, '..', '..', 'server.js')
+const PLUGIN_ROOT = resolve(HERE, '..', '..')
+const SERVER_ENTRY = resolve(PLUGIN_ROOT, 'server.js')
+
+const { detectFirefoxBin } = await import(
+  pathToFileURL(resolve(PLUGIN_ROOT, 'lib/firefox/launcher.js')).href
+)
+
+const firefoxBin = detectFirefoxBin()
+const skip = firefoxBin
+  ? false
+  : 'firefox is not installed — skipping the live-browser MCP integration test'
 
 /** A tiny MCP client over the server's stdio. */
 class McpStdioClient {
@@ -73,7 +83,7 @@ class McpStdioClient {
   }
 }
 
-describe('captcha text block (live MCP server)', () => {
+describe('captcha text block (live MCP server)', { skip }, () => {
   let child
   let client
 

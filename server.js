@@ -204,8 +204,17 @@ const LEGACY_TOOLS = new Set([
 // JSON-RPC plumbing
 // ---------------------------------------------------------------------------
 
+process.stdout.on('error', () => {
+  // Ignore broken-pipe (EPIPE) when the host closes stdout before exit.
+})
+
 function write(message) {
-  process.stdout.write(`${JSON.stringify(message)}\n`)
+  if (!process.stdout.writable) return
+  try {
+    process.stdout.write(`${JSON.stringify(message)}\n`)
+  } catch {
+    /* broken pipe */
+  }
 }
 
 /**
@@ -244,6 +253,7 @@ function replyError(id, code, message, sink = write) {
  * @param {object} [params]
  */
 function notify(method, params = {}) {
+  if (FIREFOX_BROWSER_DAEMON) return
   write({ jsonrpc: '2.0', method, params })
 }
 
@@ -266,7 +276,7 @@ function validateArgs(tool, args) {
   const value = args && typeof args === 'object' ? args : {}
 
   for (const key of schema.required || []) {
-    if (value[key] === undefined || value[key] === null || value[key] === '') {
+    if (value[key] === undefined || value[key] === null) {
       return `missing required argument "${key}" for tool "${tool.name}"`
     }
   }
@@ -579,6 +589,35 @@ let buffer = ''
 // EOF means the client is gone. A daemon has no client on stdin — it is
 // reached through the control socket — so wiring the reader there would
 // kill the server the moment it was started detached.
+// ---------------------------------------------------------------------------
+// Shutdown state (declared before stdin listeners and top-level await so an
+// early EOF or SIGTERM during socket probing never hits a temporal dead zone)
+// ---------------------------------------------------------------------------
+
+let shuttingDown = false
+let controlServer = null
+
+async function shutdown(reason) {
+  if (shuttingDown) return
+  shuttingDown = true
+  log(`shutting down (${reason})`)
+  if (controlServer) {
+    try {
+      controlServer.close()
+      unlinkSync(controlSocketPath())
+    } catch {
+      /* best effort */
+    }
+  }
+  try {
+    await provider.stop()
+  } catch (e) {
+    log(`stop failed: ${e && e.message ? e.message : e}`)
+  }
+  resetFirefoxProvider()
+  process.exit(0)
+}
+
 if (!FIREFOX_BROWSER_DAEMON) {
   process.stdin.setEncoding('utf8')
   process.stdin.on('data', (chunk) => {
@@ -771,34 +810,7 @@ async function startControlSocket() {
 
 // The socket may already be owned by a live server, and finding that out
 // takes a round trip — so this is the one await in the module's top level.
-const controlServer = await startControlSocket()
-
-// ---------------------------------------------------------------------------
-// Shutdown
-// ---------------------------------------------------------------------------
-
-let shuttingDown = false
-
-async function shutdown(reason) {
-  if (shuttingDown) return
-  shuttingDown = true
-  log(`shutting down (${reason})`)
-  if (controlServer) {
-    try {
-      controlServer.close()
-      unlinkSync(controlSocketPath())
-    } catch {
-      /* best effort */
-    }
-  }
-  try {
-    await provider.stop()
-  } catch (e) {
-    log(`stop failed: ${e && e.message ? e.message : e}`)
-  }
-  resetFirefoxProvider()
-  process.exit(0)
-}
+controlServer = await startControlSocket()
 
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGINT', () => shutdown('SIGINT'))

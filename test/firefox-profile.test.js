@@ -26,6 +26,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const absPath = (rel) => pathToFileURL(resolve(HERE, '..', rel)).href
 
 const {
+  defaultFirefoxDirs,
   detectUserProfile,
   isProfileLocked,
   profileFingerprint,
@@ -527,5 +528,90 @@ describe('profile helpers', () => {
 
     removeStaleProfileCopies(base, keep)
     assert.equal(existsSync(other), true)
+  })
+
+  test('removeStaleProfileCopies does not delete locked profile-* directories', () => {
+    const base = join(tmpRoot, 'stale-base-locked')
+    mkdirSync(base, { recursive: true })
+    const keep = join(base, 'profile-keep')
+    const activeOther = join(base, 'profile-active-other')
+    const unlockedStale = join(base, 'profile-unlocked-stale')
+    mkdirSync(keep)
+    mkdirSync(activeOther)
+    mkdirSync(unlockedStale)
+    writeFileSync(join(activeOther, '.parentlock'), '')
+
+    const removed = removeStaleProfileCopies(base, keep)
+    assert.deepEqual(removed, [unlockedStale])
+    assert.equal(existsSync(unlockedStale), false)
+    assert.equal(existsSync(activeOther), true, 'locked profile copy must survive cleanup')
+  })
+
+  test('defaultFirefoxDirs covers macOS, Windows, and Linux locations', () => {
+    const mac = defaultFirefoxDirs('darwin', {}, '/Users/alice')
+    assert.ok(mac[0].endsWith('Library/Application Support/Firefox'))
+
+    const win = defaultFirefoxDirs('win32', { APPDATA: '/win/AppData/Roaming' }, '/Users/alice')
+    assert.ok(win[0].includes('Mozilla'))
+
+    const linux = defaultFirefoxDirs('linux', {}, '/home/alice')
+    assert.ok(linux[0].endsWith('.mozilla/firefox'))
+  })
+
+  test('detectUserProfile honours [Install...] Default= over legacy Default=1 and supports IsRelative=0', () => {
+    const base = mkdtempSync(join(tmpRoot, 'ff-install-'))
+    const legacyDir = join(base, 'Profiles', 'legacy.default')
+    const activeDir = join(base, 'Profiles', 'active.default-release')
+    mkdirSync(legacyDir, { recursive: true })
+    mkdirSync(activeDir, { recursive: true })
+    writeFileSync(
+      join(base, 'profiles.ini'),
+      [
+        '[Install4F96D1932A9F858E]',
+        'Default=Profiles/active.default-release',
+        'Locked=1',
+        '',
+        '[Profile0]',
+        'Name=default',
+        'IsRelative=1',
+        'Path=Profiles/legacy.default',
+        'Default=1',
+        '',
+        '[Profile1]',
+        'Name=default-release',
+        'IsRelative=0',
+        `Path=${activeDir}`,
+        '',
+      ].join('\n'),
+    )
+
+    const chosen = detectUserProfile(base)
+    assert.equal(chosen, activeDir)
+  })
+
+  test('copyProfile copies storage/default ls and idb while skipping ServiceWorker cache and locks', () => {
+    const src = mkdtempSync(join(tmpRoot, 'src-storage-'))
+    writeFileSync(join(src, 'cookies.sqlite'), 'c')
+    const originDir = join(src, 'storage', 'default', 'https+++example.com')
+    mkdirSync(join(originDir, 'ls'), { recursive: true })
+    mkdirSync(join(originDir, 'idb'), { recursive: true })
+    mkdirSync(join(originDir, 'cache'), { recursive: true })
+    writeFileSync(join(originDir, '.metadata-v2'), 'meta')
+    writeFileSync(join(originDir, 'ls', 'data.sqlite'), 'localstorage-bytes')
+    writeFileSync(join(originDir, 'idb', 'store.sqlite'), 'idb-bytes')
+    writeFileSync(join(originDir, 'cache', 'big.bin'), 'cached-asset')
+    writeFileSync(join(originDir, '.parentlock'), '')
+
+    const dest = join(tmpRoot, 'dest-storage')
+    const res = copyProfile(src, dest)
+    assert.equal(res.ok, true)
+
+    const destOrigin = join(dest, 'storage', 'default', 'https+++example.com')
+    assert.equal(existsSync(join(destOrigin, 'ls', 'data.sqlite')), true)
+    assert.equal(existsSync(join(destOrigin, 'idb', 'store.sqlite')), true)
+    assert.equal(existsSync(join(destOrigin, '.metadata-v2')), true)
+    assert.equal(existsSync(join(destOrigin, 'cache')), false, 'SW cache must be skipped')
+    assert.equal(existsSync(join(destOrigin, '.parentlock')), false)
+    assert.equal(statSync(join(destOrigin, 'ls', 'data.sqlite')).mode & 0o777, 0o600)
   })
 })

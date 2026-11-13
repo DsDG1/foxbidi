@@ -250,6 +250,76 @@ describe('browser_run_script path guard', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  test('rejects sibling-prefix directories and splits FIREFOX_BROWSER_SCRIPT_ROOTS by path.delimiter', async () => {
+    const { delimiter } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'ffb-script-roots-'))
+    const prev = process.env.FIREFOX_BROWSER_SCRIPT_ROOTS
+    try {
+      const rootA = join(dir, 'root')
+      const rootEvil = join(dir, 'root-evil')
+      const rootB = join(dir, 'extra')
+      mkdirSync(rootA)
+      mkdirSync(rootEvil)
+      mkdirSync(rootB)
+      const evilFile = join(rootEvil, 'probe.js')
+      writeFileSync(evilFile, 'return () => 1')
+
+      // Sibling prefix `/tmp/.../root-evil/probe.js` must NOT match `/tmp/.../root`
+      const verdict = resolveScriptPath(evilFile, [rootA])
+      assert.equal(verdict.ok, false)
+      assert.equal(verdict.reason, 'not_allowed')
+
+      process.env.FIREFOX_BROWSER_SCRIPT_ROOTS = `${rootA}${delimiter}${rootB}`
+      const roots = scriptRoots()
+      assert.ok(roots.includes(rootA))
+      assert.ok(roots.includes(rootB))
+    } finally {
+      if (prev === undefined) delete process.env.FIREFOX_BROWSER_SCRIPT_ROOTS
+      else process.env.FIREFOX_BROWSER_SCRIPT_ROOTS = prev
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('runScript redacts secret tokens and credential-named fields in return values', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ffb-runscript-redact-'))
+    const prev = process.env.FIREFOX_BROWSER_SCRIPT_ROOTS
+    try {
+      process.env.FIREFOX_BROWSER_SCRIPT_ROOTS = dir
+      const script = join(dir, 'extract.js')
+      writeFileSync(script, 'return () => ({ ok: true })')
+
+      const provider = new FirefoxProvider({ copyBaseDir: '/tmp/ffb-test' })
+      provider._ensureReady = async () => true
+      provider._resolveContext = async () => 'ctx-1'
+      provider.client = {
+        send: async (method) => {
+          assert.equal(method, 'script.callFunction')
+          return {
+            type: 'success',
+            result: {
+              type: 'object',
+              value: [
+                ['title', { type: 'string', value: 'Dashboard' }],
+                ['password', { type: 'string', value: 'super-secret-pw' }],
+                ['header', { type: 'string', value: 'Authorization: Bearer abcdefgh12345678' }],
+              ],
+            },
+          }
+        },
+      }
+
+      const res = await provider.runScript(script)
+      assert.equal(res.ok, true)
+      assert.equal(res.result.title, 'Dashboard')
+      assert.equal(res.result.password, '<redacted>:len=15')
+      assert.equal(res.result.header, 'Authorization: Bearer <redacted>')
+    } finally {
+      if (prev === undefined) delete process.env.FIREFOX_BROWSER_SCRIPT_ROOTS
+      else process.env.FIREFOX_BROWSER_SCRIPT_ROOTS = prev
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('tool presets', () => {

@@ -194,4 +194,119 @@ describe('the proxy', () => {
     assert.equal(typeof status.connections, 'number')
     assert.ok(Array.isArray(status.refused))
   })
+
+  test('it forwards upstream non-200 status codes and headers without wrapping in HTTP 200', async () => {
+    const customOrigin = await new Promise((resolve) => {
+      const s = http.createServer((req, res) => {
+        res.writeHead(404, {
+          'content-type': 'text/plain',
+          'x-upstream-marker': 'preserved',
+        })
+        res.end('missing resource')
+      })
+      s.listen(0, '127.0.0.1', () => resolve(s))
+    })
+    const customPort = customOrigin.address().port
+    const customProxy = new EgressProxy({
+      allowPrivateHosts: true,
+      ports: [customPort],
+    })
+    await customProxy.start()
+
+    try {
+      const parsed = await new Promise((resolve, reject) => {
+        const req = http.request(
+          {
+            host: '127.0.0.1',
+            port: customProxy.port,
+            method: 'GET',
+            path: `http://127.0.0.1:${customPort}/missing`,
+            headers: { host: `127.0.0.1:${customPort}` },
+          },
+          (res) => {
+            let body = ''
+            res.setEncoding('utf8')
+            res.on('data', (chunk) => {
+              body += chunk
+            })
+            res.on('end', () => {
+              resolve({
+                statusCode: res.statusCode,
+                marker: res.headers['x-upstream-marker'],
+                body,
+              })
+            })
+          },
+        )
+        req.on('error', reject)
+        req.end()
+      })
+      assert.equal(parsed.statusCode, 404)
+      assert.equal(parsed.marker, 'preserved')
+      assert.equal(parsed.body, 'missing resource')
+    } finally {
+      await customProxy.stop()
+      await new Promise((resolve) => customOrigin.close(resolve))
+    }
+  })
+
+  test('CONNECT tunnels clear the 15s connect timeout once established and survive early client aborts', async () => {
+    const echoServer = await new Promise((resolve) => {
+      const s = net.createServer((sock) => {
+        sock.on('data', (chunk) => sock.write(chunk))
+      })
+      s.listen(0, '127.0.0.1', () => resolve(s))
+    })
+    const echoPort = echoServer.address().port
+    const tunnelProxy = new EgressProxy({
+      allowPrivateHosts: true,
+      ports: [echoPort],
+    })
+    await tunnelProxy.start()
+
+    try {
+      // 1. Early client RST right after sending CONNECT must not emit unhandled 'error'.
+      const aborted = net.connect(tunnelProxy.port, '127.0.0.1')
+      await new Promise((resolve) => aborted.once('connect', resolve))
+      aborted.write(`CONNECT 127.0.0.1:${echoPort} HTTP/1.1\r\nHost: 127.0.0.1:${echoPort}\r\n\r\n`)
+      aborted.resetAndDestroy()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // 2. Normal CONNECT tunnel clears connect timeout on upstream socket.
+      const client = net.connect(tunnelProxy.port, '127.0.0.1')
+      const reply = await new Promise((resolve, reject) => {
+        let buf = ''
+        client.once('connect', () => {
+          client.write(
+            `CONNECT 127.0.0.1:${echoPort} HTTP/1.1\r\nHost: 127.0.0.1:${echoPort}\r\n\r\n`,
+          )
+        })
+        const onData = (chunk) => {
+          buf += chunk.toString('utf8')
+          if (buf.includes('\r\n\r\n')) {
+            client.removeListener('data', onData)
+            resolve(buf)
+          }
+        }
+        client.on('data', onData)
+        client.once('error', reject)
+      })
+      assert.match(reply, /200 Connection Established/)
+
+      // Verify every tracked upstream socket has timeout cleared (0)
+      for (const sock of tunnelProxy._sockets) {
+        assert.ok(!sock.timeout || sock.timeout === 0, `expected timeout 0, got ${sock.timeout}`)
+      }
+
+      const echoed = await new Promise((resolve) => {
+        client.once('data', (chunk) => resolve(chunk.toString('utf8')))
+        client.write('ping-through-tunnel')
+      })
+      assert.equal(echoed, 'ping-through-tunnel')
+      client.destroy()
+    } finally {
+      await tunnelProxy.stop()
+      await new Promise((resolve) => echoServer.close(resolve))
+    }
+  })
 })

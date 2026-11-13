@@ -333,4 +333,42 @@ describe('mcp stdio server', () => {
     const fullCaps = full.result.structuredContent.capabilities
     assert.ok(fullCaps.featureDetails, 'the full payload keeps the provenance')
   })
+
+  test('accepts empty string for required string arguments like select value or clear text', async () => {
+    // Without a running browser (and bogus bin), passing validation reaches the provider
+    // and returns `not_running` instead of `invalid_argument: missing required argument`.
+    const isolated = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: PLUGIN_ROOT,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, FIREFOX_BROWSER_BIN: '/nonexistent/firefox' },
+    })
+    const isoClient = new McpStdioClient(isolated)
+    try {
+      await isoClient.send('initialize', { protocolVersion: '2025-06-18', capabilities: {} })
+      const res = await isoClient.send('tools/call', {
+        name: 'browser_select_option',
+        arguments: { selector: '#country', value: '' },
+      })
+      assert.notEqual(res.result.structuredContent.code, 'invalid_argument')
+    } finally {
+      isolated.kill('SIGKILL')
+    }
+  })
+
+  test('immediate stdin EOF during control-socket startup probe does not throw TDZ ReferenceError', async () => {
+    const quick = spawn(process.execPath, [SERVER_ENTRY], {
+      cwd: PLUGIN_ROOT,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env },
+    })
+    let stderr = ''
+    quick.stderr.setEncoding('utf8')
+    quick.stderr.on('data', (c) => {
+      stderr += c
+    })
+    quick.stdin.end()
+    const code = await new Promise((r) => quick.once('exit', r))
+    assert.equal(code, 0)
+    assert.doesNotMatch(stderr, /ReferenceError/)
+  })
 })

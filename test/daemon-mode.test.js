@@ -240,4 +240,29 @@ describe('ff-call without a server', () => {
     assert.ok(failed, 'the call must fail without a server')
     assert.equal(existsSync(socketPath), false, 'the refused call must not start anything')
   })
+
+  test('starts cleanly on first run when the data directory does not exist yet', () => {
+    const freshDir = join(dataDir, 'nested', 'first-run-dir')
+    assert.equal(existsSync(freshDir), false)
+    const freshEnv = {
+      ...env,
+      FIREFOX_BROWSER_DAEMON: '',
+      FIREFOX_BROWSER_CONTROL_SOCKET: '',
+      FIREFOX_BROWSER_PROFILE_COPY: freshDir,
+    }
+    try {
+      const started = Date.now()
+      const out = execFileSync(process.execPath, [FF_CALL, '--serve'], {
+        env: freshEnv,
+        encoding: 'utf8',
+      })
+      const report = JSON.parse(out)
+      assert.equal(report.ok, true)
+      assert.ok(Date.now() - started < 10000, 'first-run start must not hit lock ENOENT timeout')
+    } finally {
+      try {
+        execFileSync(process.execPath, [FF_CALL, '--stop'], { env: freshEnv, encoding: 'utf8' })
+      } catch {}
+    }
+  })
 })

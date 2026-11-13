@@ -307,6 +307,51 @@ describe('browser_verify: list', () => {
     const result = await provider.verify('ctx-1', { kind: 'list', ref: 'e0', items: [] })
     assert.equal(result.code, 'invalid_argument')
   })
+
+  test('iframe-scoped refs resolve against the frame context in value and list assertions', async () => {
+    const client = fakeClient({
+      inspect: { type: 'text', name: 'City', value: 'Tokyo' },
+      elementText: 'Alpha Beta',
+    })
+    const provider = providerWith(client)
+    provider._frameMap.set('f1a2b3c4', 'frame-ctx-9')
+
+    const valRes = await provider.verify('ctx-1', {
+      kind: 'value',
+      ref: 'f1a2b3c4:e5',
+      value: 'Tokyo',
+    })
+    assert.equal(valRes.ok, true)
+    assert.equal(valRes.verified, true)
+    assert.equal(valRes.contextId, 'frame-ctx-9')
+
+    const listRes = await provider.verify('ctx-1', {
+      kind: 'list',
+      ref: 'f1a2b3c4:e6',
+      items: ['Alpha', 'Beta'],
+    })
+    assert.equal(listRes.ok, true)
+    assert.equal(listRes.verified, true)
+    assert.equal(listRes.contextId, 'frame-ctx-9')
+  })
+
+  test('secret tokens inside list element text are redacted before returning actual', async () => {
+    const secretJwt =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
+    const client = fakeClient({
+      inspect: { type: 'list', name: 'Tokens', value: '' },
+      elementText: `ItemA ${secretJwt}`,
+    })
+    const provider = providerWith(client)
+    const result = await provider.verify('ctx-1', {
+      kind: 'list',
+      ref: 'e0',
+      items: ['ItemA', 'Missing'],
+    })
+    assert.equal(result.ok, true)
+    assert.ok(!result.actual.includes('SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'))
+    assert.match(result.actual, /<redacted>/)
+  })
 })
 
 describe('browser_verify: the tool contract', () => {

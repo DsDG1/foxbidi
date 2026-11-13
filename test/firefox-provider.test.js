@@ -77,11 +77,51 @@ describe('profile copy base resolution', () => {
   })
 })
 
+const { safeSerializable, resolveWithin } = await import(absPath('lib/firefox/provider/helpers.js'))
+
 describe('provider lifecycle states', () => {
   test('exposes the documented state vocabulary', () => {
     assert.deepEqual(Object.keys(STATE).sort(), ['DEGRADED', 'FAILED', 'IDLE', 'READY', 'STARTING'])
     assert.equal(STATE.IDLE, 'idle')
     assert.equal(STATE.READY, 'ready')
     assert.equal(STATE.DEGRADED, 'degraded')
+  })
+})
+
+describe('safeSerializable', () => {
+  test('drops circular references without overflowing the stack while keeping shared DAG nodes', () => {
+    const shared = { count: 3 }
+    const root = { a: shared, b: shared, big: 9007199254740993n, fn: () => {} }
+    root.self = root
+    const arr = [1]
+    arr.push(arr)
+    root.arr = arr
+
+    const safe = safeSerializable(root)
+    assert.deepEqual(safe.a, { count: 3 })
+    assert.deepEqual(safe.b, { count: 3 })
+    assert.equal(safe.big, '9007199254740993')
+    assert.equal(safe.fn, undefined)
+    assert.equal(safe.self, undefined)
+    assert.deepEqual(safe.arr, [1, null])
+    assert.doesNotThrow(() => JSON.stringify(safe))
+  })
+})
+
+describe('resolveWithin', () => {
+  test('resolves paths inside base including filenames starting with ..', () => {
+    assert.equal(resolveWithin('/tmp/base', 'sub/file.js'), resolve('/tmp/base/sub/file.js'))
+    assert.equal(resolveWithin('/tmp/base', '.'), resolve('/tmp/base'))
+    assert.equal(resolveWithin('/tmp/base', '..hidden'), resolve('/tmp/base/..hidden'))
+  })
+
+  test('rejects parent traversal, absolute escapes, and sibling-prefix escapes', () => {
+    assert.throws(() => resolveWithin('/tmp/base', '..'), /escapes base directory/)
+    assert.throws(() => resolveWithin('/tmp/base', '../../etc/passwd'), /escapes base directory/)
+    assert.throws(() => resolveWithin('/tmp/base', '/etc/passwd'), /escapes base directory/)
+    assert.throws(
+      () => resolveWithin('/tmp/base', '../base-evil/payload.js'),
+      /escapes base directory/,
+    )
   })
 })

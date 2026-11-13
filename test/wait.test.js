@@ -133,6 +133,63 @@ describe('waitForNetworkIdle', () => {
     assert.equal(result.ok, false)
     assert.equal(result.matched, false)
   })
+
+  test('waits for an in-flight requestId to finish even after quietMs passes', async () => {
+    const log = new NetworkLog()
+    log.record({
+      requestId: 'req-slow',
+      contextId: 'ctx-1',
+      phase: 'start',
+      method: 'GET',
+      url: 'https://example.com/slow',
+      status: null,
+    })
+
+    let settled = false
+    setTimeout(() => {
+      settled = true
+      log.record({
+        requestId: 'req-slow',
+        contextId: 'ctx-1',
+        phase: 'complete',
+        method: 'GET',
+        url: 'https://example.com/slow',
+        status: 200,
+      })
+    }, 60)
+
+    const result = await waitForNetworkIdle(
+      { send: async () => ({}) },
+      { context: 'ctx-1', log, quietMs: 15, timeoutMs: 1000 },
+    )
+    assert.equal(result.ok, true)
+    assert.equal(settled, true, 'must not resolve while req-slow is still pending')
+  })
+
+  test('ignores noisy background requests from a different contextId', async () => {
+    const log = new NetworkLog()
+    const timer = setInterval(() => {
+      log.record({
+        requestId: `bg-${Date.now()}`,
+        contextId: 'ctx-background',
+        phase: 'start',
+        method: 'GET',
+        url: 'https://ads.example.com/ping',
+        status: null,
+      })
+    }, 5)
+
+    try {
+      const result = await waitForNetworkIdle(
+        { send: async () => ({}) },
+        { context: 'ctx-foreground', log, quietMs: 25, timeoutMs: 500 },
+      )
+      assert.equal(result.ok, true)
+      assert.equal(result.matched, true)
+    } finally {
+      clearInterval(timer)
+    }
+  })
 })
 
 describe('wait expressions', () => {

@@ -95,6 +95,29 @@ describe('frame control frames', () => {
     assert.equal(decoded[0].type, 'close')
     assert.ok(decoded[0].reason.length <= 123, 'reason must fit the 125-byte control limit')
   })
+
+  test('encodeCloseFrame does not split multi-byte UTF-8 into U+FFFD past 125 bytes', () => {
+    for (const pad of [119, 120, 121, 122]) {
+      const reason = 'a'.repeat(pad) + '点击🚀测试'
+      const buf = encodeCloseFrame(1000, reason)
+      // Header must stay 2 bytes (7-bit payload length <= 125), never 126/127.
+      const wireLen = buf[1] & 0x7f
+      assert.ok(wireLen <= 125, `wire length ${wireLen} exceeded 125 for pad=${pad}`)
+      const decoded = decodeAll(buf)
+      assert.equal(decoded.length, 1)
+      assert.equal(decoded[0].type, 'close')
+      assert.equal(decoded[0].code, 1000)
+      assert.equal(decoded[0].reason.includes('\ufffd'), false, 'must not contain U+FFFD')
+    }
+  })
+
+  test('encodePongFrame clamps oversized payloads to the 125-byte control limit', () => {
+    const buf = encodePongFrame(Buffer.alloc(300, 0x61))
+    assert.equal(buf[1] & 0x7f, 125)
+    const decoded = decodeAll(buf)
+    assert.equal(decoded[0].type, 'pong')
+    assert.equal(decoded[0].payload.length, 125)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -124,6 +147,18 @@ describe('frame.FrameDecoder', () => {
     assert.equal(decoded.length, 2)
     assert.equal(decoded[0].payload.toString('utf8'), 'one')
     assert.equal(decoded[1].payload.toString('utf8'), 'two')
+  })
+
+  test('decodes a large 64-bit length frame streamed in tiny uneven chunks', () => {
+    const text = '截图数据-'.repeat(12000) // > 65536 bytes UTF-8
+    const wire = encodeTextFrame(text)
+    const dec = new FrameDecoder()
+    const out = []
+    for (let i = 0; i < wire.length; i += 17) {
+      out.push(...dec.push(wire.subarray(i, i + 17)))
+    }
+    assert.equal(out.length, 1)
+    assert.equal(out[0].payload.toString('utf8'), text)
   })
 
   test('reassembles a fragmented text message', () => {
