@@ -22,10 +22,10 @@ const SOURCE = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 /**
  * Write the tracked files of `source` into `target` and verify the result.
  *
- * @param {{source?: string, target: string, dryRun?: boolean, force?: boolean}} options
- * @returns {{target: string, files: string[], contract: object}}
+ * @param {{source?: string, target?: string, dryRun?: boolean, force?: boolean}} [options]
+ * @returns {{target: string, files: string[], contract: Record<string, any>}}
  */
-export function publish({ source = SOURCE, target, dryRun = false, force = false } = {}) {
+export function publish({ source = SOURCE, target = '', dryRun = false, force = false } = {}) {
   const sourceAbs = resolve(source)
   const targetAbs = resolve(target)
   if (targetAbs === sourceAbs) throw new Error('refusing to publish a directory onto itself')

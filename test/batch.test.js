@@ -128,6 +128,53 @@ describe('browser_batch', () => {
     assert.equal(result.steps[0].snapshot.count, 1)
     assert.equal(result.steps[0].snapshot.elements[0].ref, 'e0')
   })
+
+  test('batch forwards semantic match targets and preserves code + recovery on step failure', async () => {
+    const received = []
+    const provider = new FirefoxProvider({ copyBaseDir: '/tmp/ffb-test' })
+    provider._ensureReady = async () => true
+    provider._resolveContext = async (id) => id || 'ctx-1'
+    provider.type = async (_sel, text, _ctx, opts) => {
+      received.push({
+        action: 'type',
+        text,
+        match: opts.match,
+        includeSnapshot: opts.includeSnapshot,
+      })
+      return { ok: true, typed: text.length }
+    }
+    provider.click = async (_sel, _ctx, opts) => {
+      received.push({ action: 'click', match: opts.match })
+      return {
+        ok: false,
+        code: 'confirm_required',
+        error: 'form submit needs confirmation',
+        recovery: {
+          retrySameCall: true,
+          sideEffectState: 'none',
+          askUser: true,
+          retryWith: { confirm: true },
+        },
+      }
+    }
+
+    const res = await provider.batch([
+      {
+        action: 'type',
+        match: { role: 'textbox', name: 'Email' },
+        text: 'a@b.com',
+        includeSnapshot: false,
+      },
+      { action: 'click', match: { role: 'button', name: 'Submit' } },
+    ])
+    assert.equal(res.ok, false)
+    assert.equal(res.failedAt, 1)
+    assert.deepEqual(received[0].match, { role: 'textbox', name: 'Email' })
+    assert.equal(received[0].includeSnapshot, false)
+    assert.deepEqual(received[1].match, { role: 'button', name: 'Submit' })
+    assert.equal(res.steps[1].code, 'confirm_required')
+    assert.equal(res.steps[1].recovery.retrySameCall, true)
+  })
 })
 
 describe('browser_run_script path guard', () => {

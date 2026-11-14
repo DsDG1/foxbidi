@@ -51,4 +51,12 @@ export default [
       'no-useless-escape': 'error',
     },
   },
+  {
+    files: ['lib/firefox/page/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
 ]

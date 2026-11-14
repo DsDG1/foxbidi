@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "maxNodeModuleJsDepth": 0,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitThis": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "include": ["server.js", "lib/**/*.js", "tools/**/*.mjs"],
+  "exclude": [
+    "node_modules",
+    ".worktrees",
+    ".plugin-data",
+    "test",
+    "lib/firefox/captcha/**",
+    "lib/firefox/captcha.js",
+    "lib/firefox/provider/captcha.js"
+  ]
+}

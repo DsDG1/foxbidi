@@ -66,9 +66,9 @@ export function parseRegistryKey(key) {
 /**
  * Find the registry entry that belongs to this plugin.
  *
- * @param {Array<object>} servers the registry's `servers` array
+ * @param {Array<Record<string, any>>} servers the registry's `servers` array
  * @param {string} manifestName the plugin name from `.minimax-plugin/plugin.json`
- * @returns {object|null} the entry, or null when the plugin is not registered
+ * @returns {Record<string, any>|null} the entry, or null when the plugin is not registered
  */
 export function findPluginEntry(servers, manifestName) {
   const list = Array.isArray(servers) ? servers : []
@@ -81,7 +81,7 @@ export function findPluginEntry(servers, manifestName) {
 /**
  * The plugin names the registry holds an entry for.
  *
- * @param {Array<object>} servers
+ * @param {Array<Record<string, any>>} servers
  * @returns {string[]}
  */
 export function registeredPluginNames(servers) {
@@ -97,9 +97,9 @@ export function registeredPluginNames(servers) {
 /**
  * Compare a registry entry against the code.
  *
- * @param {object} entry the registry entry for this plugin
- * @param {object} opts
- * @param {string[]} opts.catalogue every tool the code defines
+ * @param {Record<string, any>} entry the registry entry for this plugin
+ * @param {object} [opts]
+ * @param {string[]} [opts.catalogue] every tool the code defines
  * @param {string} [opts.preset] the preset the host saw (default: basic)
  * @returns {{registered: string[], missing: string[], unknown: string[], wider: string[], expected: string[]}}
  */

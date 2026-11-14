@@ -228,4 +228,44 @@ describe('the inline snapshot on an action', () => {
     const result = await runInline(provider)
     assert.equal(result.effect.snapshotTruncated, true)
   })
+
+  test('prioritizes delta-added, dialog, and action-proximate elements over top nav links', async () => {
+    const navLinks = Array.from({ length: 70 }, (_, i) => ({
+      ref: `e${i}`,
+      role: 'link',
+      name: `Nav ${i}`,
+      landmark: 'navigation',
+      inViewport: true,
+      rect: { x: 10, y: 10 + i * 5, w: 60, h: 20 },
+    }))
+    const modalBtn = {
+      ref: 'e70',
+      role: 'button',
+      name: 'Confirm Modal',
+      landmark: 'dialog',
+      inViewport: true,
+      rect: { x: 400, y: 300, w: 100, h: 36 },
+    }
+    const nearbyItem = {
+      ref: 'e71',
+      role: 'option',
+      name: 'Dropdown Item',
+      landmark: 'main',
+      inViewport: true,
+      rect: { x: 505, y: 610, w: 120, h: 28 },
+    }
+    const all = [...navLinks, modalBtn, nearbyItem]
+    const client = fakeClient({ payload: { elements: all, total: all.length } })
+    const provider = providerWith(client)
+    provider._state.recordBaseline('s1', 'ctx-1', navLinks)
+    provider._state.recordActedPoint('ctx-1', 500, 600)
+
+    const inline = await provider._inlineSnapshot('ctx-1')
+    assert.equal(inline.elements.length, 60)
+    const refs = inline.elements.map((e) => e.ref)
+    assert.ok(refs.includes('e70'), 'dialog element beyond index 60 must be surfaced')
+    assert.ok(refs.includes('e71'), 'newly added nearby element beyond index 60 must be surfaced')
+    assert.ok(!refs.includes('e0'), 'distant top nav link is evicted to make room')
+    assert.deepEqual(refs.slice(-2), ['e70', 'e71'])
+  })
 })

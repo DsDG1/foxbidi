@@ -210,16 +210,16 @@ describe('mcp tools (live browser)', { skip }, () => {
     const text = res.result.content.find((c) => c.type === 'text')
     assert.ok(text, 'screenshot must also return a text summary')
     assert.ok(!text.text.includes(image.data), 'the text summary must not inline the image data')
-    assert.match(text.text, /"ok": true/)
+    assert.ok(text.text.includes(res.result.structuredContent.imageUrl))
   })
 
   test('the screenshot result exposes an image url in its text and structured output', async () => {
     const res = await send('tools/call', { name: 'browser_screenshot', arguments: {} })
     assert.equal(res.result.isError, false)
     const text = res.result.content.find((c) => c.type === 'text')
-    const payload = JSON.parse(text.text)
-    assert.ok(payload.imageUrl, 'the text block must carry the image url')
-    assert.equal(res.result.structuredContent.imageUrl, payload.imageUrl)
+    const payload = res.result.structuredContent
+    assert.ok(payload.imageUrl, 'structuredContent must carry the image url')
+    assert.ok(text.text.includes(payload.imageUrl), 'the text summary must include the image url')
     // 图片本体走 MCP image 块，文本块里绝不能出现 base64。
     assert.ok(!text.text.includes('data:image'))
     assert.ok(res.result.content.some((c) => c.type === 'image'))

@@ -218,7 +218,7 @@ async function handshake(client) {
  * that no longer matches the code — the tools are missing or stale. This
  * is the check that finds it.
  *
- * @returns {object}
+ * @returns {Record<string, any>}
  */
 function hostRegistry() {
   const candidates = [
@@ -260,7 +260,7 @@ function hostRegistry() {
 /**
  * The doctor: say what is and is not working.
  *
- * @returns {Promise<object>}
+ * @returns {Promise<Record<string, any>>}
  */
 async function doctor() {
   const report = { plugin: {}, host: {}, socket: {}, browser: {}, network: {} }
@@ -334,7 +334,7 @@ async function doctor() {
 /**
  * Turn the report into the next thing to do.
  *
- * @param {object} report
+ * @param {Record<string, any>} report
  * @returns {string}
  */
 function advice(report) {
@@ -382,7 +382,7 @@ function advice(report) {
  * would mean a second Firefox, and the BiDi session allows only one.
  *
  * @param {Set<string>} flags
- * @returns {Promise<{client: Client, child: object|null}>}
+ * @returns {Promise<{client: Client, child: Record<string, any>|null}>}
  */
 async function connect(flags) {
   const socket = controlSocketPath()

@@ -64,7 +64,7 @@ describe('the page-side visibility script', () => {
 
   test('the script is a self-invoking function expression', () => {
     assert.match(VISIBILITY_SCRIPT, /^\s*\(/)
-    assert.ok(VISIBILITY_SCRIPT.includes('return out;'))
+    assert.match(VISIBILITY_SCRIPT, /return out\b/)
   })
 
   test('the script reports the three buckets L2 expects', () => {

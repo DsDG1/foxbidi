@@ -73,7 +73,7 @@ function makeProvider(opts = {}) {
           return { result: toRemoteValue(opts.postScrollCoords) }
         }
         // resolveSharedId
-        if (fn.includes('return el || null;')) {
+        if (fn.includes('return el || null')) {
           return { result: { type: 'node', sharedId: 'shared-node-42' } }
         }
         return { result: { type: 'boolean', value: true } }

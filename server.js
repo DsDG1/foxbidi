@@ -29,8 +29,8 @@
 import { getFirefoxProvider, resetFirefoxProvider } from './lib/firefox/provider.js'
 import { createTools, TOOL_ORDER } from './lib/mcp/tools/index.js'
 import { presetTools } from './lib/firefox/provider/workflow.js'
-import { toStructured, summarize, summarizeCaptcha, prettyJson } from './lib/mcp/schema.js'
-import { ERROR_CODES } from './lib/firefox/errors.js'
+import { toStructured, summarize, summarizeCaptcha } from './lib/mcp/schema.js'
+import { ERROR_CODES, buildRecovery } from './lib/firefox/errors.js'
 import { defaultCopyBase } from './lib/firefox/provider/helpers.js'
 import net from 'node:net'
 import { chmodSync, existsSync, mkdirSync, unlinkSync } from 'node:fs'
@@ -63,27 +63,10 @@ const FIREFOX_BROWSER_READY_TIMEOUT_MS = Number(
   process.env.FIREFOX_BROWSER_READY_TIMEOUT_MS || 30000,
 )
 
-/**
- * Privileged (chrome://) contexts.
- *
- * Off by default: the flag widens what the browser exposes to the driver
- * (about:preferences, about:addons, about:logins). Turn it on when the task
- * needs to read the real preferences or the extension list.
- */
+/** Privileged (chrome://) contexts. */
 const FIREFOX_BROWSER_PRIVILEGED = process.env.FIREFOX_BROWSER_PRIVILEGED === '1'
 
-/**
- * Daemon mode.
- *
- * The stdio transport treats EOF on stdin as "the client is gone", so a
- * server started with a closed stdin (or /dev/null) shuts itself down at
- * once. That is right for a stdio server and fatal for a daemon.
- *
- * In daemon mode the server therefore wires NO stdin reader at all and
- * serves the control socket instead — that socket becomes its only
- * transport. It is started detached, so nothing about the shell that
- * launched it can reach it.
- */
+/** Daemon mode (socket-only, detached from stdin EOF). */
 const FIREFOX_BROWSER_DAEMON = process.env.FIREFOX_BROWSER_DAEMON === '1'
 
 const provider = getFirefoxProvider({
@@ -107,57 +90,17 @@ const LATEST_PROTOCOL_VERSION = '2025-11-25'
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 
 const INSTRUCTIONS = [
-  'Drive a real Firefox over WebDriver BiDi.',
-  'The browser starts on demand — there is no separate launch step.',
-  'Clicks use real pointer events, so they work on sites that require trusted input.',
-  'The browser reuses a copy of the user profile, so logged-in sites stay logged in.',
-  '',
-  'WORKFLOW: call browser_snapshot first to see the page as a list of elements with',
-  'stable refs (role + name), then act on a ref. Guessing CSS selectors is',
-  'unreliable; a ref is not. Refs expire when the page re-renders — if a tool',
-  'reports that a ref is stale, take a fresh snapshot.',
-  '',
-  'EFFICIENCY: browser_batch runs several actions in one call, which is usually',
-  'cheaper than one call per action. For a repeatable sequence, write a helper',
-  'script under ~/.mavis/ff-workspace/ and run it with browser_run_script.',
-  '',
-  'Every action returns an `effect` block. `effect.verified` is honest: when it is',
-  'false, nothing on the page observably changed, so the action probably did not',
-  'take effect. If the effect carries a `dialog`, the page raised a JavaScript',
-  'dialog — it was closed automatically, and the message is what it said.',
-  '',
-  'Actions that cannot be undone (submitting a form, downloading, uploading,',
-  'posting account data, installing an extension, writing a cookie) are refused',
-  'unless you pass confirm: true.',
-  '',
-  'FIREFOX-ONLY TOOLS: browser_context (isolated identities), browser_extension',
-  '(install extensions), browser_cookie (HttpOnly cookies), browser_intercept',
-  '(block requests). They need a recent Firefox — browser_status reports exactly',
-  'what the running browser supports.',
-  '',
-  'WHICH BROWSER: default to this plugin’s Firefox — it runs the real Firefox',
-  'and carries the user’s login state. Switch to the host’s in-app browser only',
-  'when the user explicitly says "current browser" / "right-side browser" /',
-  '"built-in browser". Use browser_handoff to move a page between the two;',
-  'session state (logins, cookies, tabs) never travels with it.',
-  '',
-  'SCREENSHOTS: browser_screenshot returns an imageUrl. If the user is chatting',
-  'in a web client, put that URL into your reply as a markdown image so they',
-  'can see the picture. Never inline base64 image data.',
-].join(' ')
+  'SURFACE: Default to this Firefox (real WebDriver BiDi, trusted pointer/key events, isolated copy of user profile with login state). Use host in-app browser ONLY when user says "current/right-side/built-in browser". Use browser_handoff to transfer URLs (cookies/logins never cross).',
+  'LOOP: Auto-starts on first call (skip browser_start). Observe via browser_snapshot {format:"compact"} -> act by ref (preferred) or semantic match {role,name} -> read effect.snapshot (inline post-action view) & effect.verified. Re-snapshot with {since, deltaOnly:true} to poll changes cheaply.',
+  'BATCH & SCRIPTS: Combine multi-step sequences with browser_batch (supports match:{role,name} across DOM re-renders). Save reusable helpers in ~/.mavis/ff-workspace/ for browser_run_script.',
+  'RECOVERY: Never parse error prose. Branch on `code` and execute `recovery` (`nextCall`, `retryWith`, `askUser`, `sideEffectState`). Irreversible/egress actions require confirm:true (ask user first if injection_blocked or confirm_required).',
+  'MEDIA & CAPS: Render browser_screenshot `imageUrl` as markdown `![](imageUrl)` (never inline base64). Check browser_status for Firefox capability gates (browser_context, browser_extension, browser_cookie, browser_intercept).',
+].join('\n')
 
 // ---------------------------------------------------------------------------
 // Tool catalogue
 // ---------------------------------------------------------------------------
 
-// The tool definitions live in lib/mcp/tools/, one module per concern. The
-// list order is fixed there and must not change: the host injects the tool
-// schemas in the order the server returns them, and that order is part of
-// the prompt cache.
-//
-// The catalogue is TRIMMED to the active preset when it is listed. The
-// host re-reads it whenever the preset changes, so the trimmed list is
-// what the agent actually carries in its context.
 const TOOLS = createTools({
   provider,
   onToolsetChanged: () => {
@@ -166,39 +109,7 @@ const TOOLS = createTools({
 })
 const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]))
 
-// The provider reports the effective tool set, and that report must be in
-// the CATALOGUE's order — the order the host injects, which is part of the
-// prompt cache. The provider does not know the catalogue, so it is told.
 provider._toolCatalogue = TOOL_ORDER
-
-/**
- * The twelve tools that existed before this version.
- *
- * They keep their ORIGINAL text contract: the text block carries the
- * pretty-printed JSON payload, exactly as before. Existing callers parse
- * that text, so changing it would be a breaking change — and the plugin's
- * own test suite depends on it.
- *
- * The newly added tools use the newer contract instead: a compact summary
- * in the text block plus the full payload in `structuredContent`.
- *
- * `legacy: true` therefore means "keep the old text shape", not "no
- * structured output" — the original tools still return `structuredContent`
- * too, so a caller can migrate to it at its own pace.
- */
-const LEGACY_TOOLS = new Set([
-  'browser_start',
-  'browser_stop',
-  'browser_tabs',
-  'browser_new_tab',
-  'browser_navigate',
-  'browser_click',
-  'browser_type',
-  'browser_text',
-  'browser_evaluate',
-  'browser_screenshot',
-  'browser_logs',
-])
 
 // ---------------------------------------------------------------------------
 // JSON-RPC plumbing
@@ -218,16 +129,9 @@ function write(message) {
 }
 
 /**
- * Send a reply to whoever asked.
- *
- * The stdio transport writes to stdout; the control socket writes to the
- * connection the request came in on. The sink is passed explicitly so the
- * two transports cannot step on each other when both are in use — a reply
- * to the socket must never land on the host's stdout, and vice versa.
- *
  * @param {number|string} id
- * @param {object} result
- * @param {(message: object) => void} [sink]
+ * @param {Record<string, any>} result
+ * @param {(message: Record<string, any>) => void} [sink]
  */
 function reply(id, result, sink = write) {
   sink({ jsonrpc: '2.0', id, result })
@@ -237,20 +141,15 @@ function reply(id, result, sink = write) {
  * @param {number|string} id
  * @param {number} code
  * @param {string} message
- * @param {(message: object) => void} [sink]
+ * @param {(message: Record<string, any>) => void} [sink]
  */
 function replyError(id, code, message, sink = write) {
   sink({ jsonrpc: '2.0', id, error: { code, message } })
 }
 
 /**
- * Send a notification to the host.
- *
- * Notifications carry no id and get no reply — see the `handleMessage`
- * switch, which ignores any message without an id.
- *
  * @param {string} method
- * @param {object} [params]
+ * @param {Record<string, any>} [params]
  */
 function notify(method, params = {}) {
   if (FIREFOX_BROWSER_DAEMON) return
@@ -258,17 +157,11 @@ function notify(method, params = {}) {
 }
 
 /**
- * Validate the call arguments against the tool's input schema.
+ * Validate call arguments against the tool's input schema.
  *
- * Only the subset that matters here is enforced: required properties present,
- * and property types matching. Unknown properties are rejected too — a typo in
- * an argument name should fail loudly rather than silently do nothing.
- *
- * `requiresOneOf` handles the dual addressing: an element may be named by a
- * snapshot `ref` OR by a CSS `selector`, so neither can be "required" in the
- * JSON Schema — but one of them must be present.
- *
- * @returns {string|null} an error message, or null when the args are valid
+ * @param {Record<string, any>} tool
+ * @param {Record<string, any>} args
+ * @returns {string|null}
  */
 function validateArgs(tool, args) {
   const schema = tool.inputSchema || {}
@@ -309,6 +202,9 @@ function validateArgs(tool, args) {
     if (spec.type === 'array' && !Array.isArray(raw)) {
       return `argument "${key}" of tool "${tool.name}" must be an array`
     }
+    if (spec.type === 'object' && (typeof raw !== 'object' || Array.isArray(raw))) {
+      return `argument "${key}" of tool "${tool.name}" must be an object`
+    }
     if (spec.enum && !spec.enum.includes(raw)) {
       return `argument "${key}" of tool "${tool.name}" must be one of: ${spec.enum.join(', ')}`
     }
@@ -317,14 +213,9 @@ function validateArgs(tool, args) {
 }
 
 /**
- * Render the status as one screenful of answers.
+ * Render `browser_status` as one compact line.
  *
- * The status carries the capability matrix, the ref mode, the dialog policy
- * and the session counters — a payload far too long to dump as text. The
- * summary answers the four questions an agent actually has: which Firefox is
- * this, what can it do, how are refs stored, is anything pending.
- *
- * @param {object} status
+ * @param {Record<string, any>} status
  * @returns {string}
  */
 function summarizeStatus(status) {
@@ -339,8 +230,6 @@ function summarizeStatus(status) {
   if (caps && caps.features) {
     const names = Object.keys(caps.features)
     const on = names.filter((name) => caps.features[name])
-    // "expected" means the browser was not running, so the matrix comes from
-    // the version gates instead of a live probe.
     bits.push(`capabilities ${on.length}/${names.length}${caps.probed ? '' : ' (expected)'}`)
     if (caps.browserVersion) bits.push(`browser ${caps.browserVersion}`)
   }
@@ -352,67 +241,37 @@ function summarizeStatus(status) {
 /**
  * Turn a provider result into an MCP tool result.
  *
- * Provider methods never throw — they return `{ok:false, error}` on failure —
- * so the error text is taken straight from the provider's message.
+ * Every tool emits a compact 1-line summary in `content[0].text` and the
+ * machine-readable payload in `structuredContent` (avoiding 2x JSON duplication).
  *
- * The result carries BOTH a text block and the full structured payload.
- *
- * The twelve original tools keep their original text shape — the
- * pretty-printed JSON payload — because existing callers parse that text
- * and changing it would be a breaking change. The tools added in this
- * version use a compact summary in the text block instead, so the payload
- * is not stated twice (the host renders `structuredContent` into the text
- * output as well).
- *
- * `browser_status` left the legacy set in 2.0: its payload grew to include
- * the capability matrix, and a status dump is exactly the kind of thing that
- * belongs in `structuredContent` rather than in the text.
+ * @param {*} result
+ * @param {Record<string, any>|null} tool
+ * @returns {Record<string, any>}
  */
 function toToolResult(result, tool) {
   const structured = toStructured(result)
   const isError = structured.ok === false
-  const isLegacy = tool ? LEGACY_TOOLS.has(tool.name) : false
 
-  // A screenshot is delivered as an MCP image content block so the model
-  // receives an actual image rather than an opaque base64 blob.
   if (tool && tool.name === 'browser_screenshot' && !isError) {
     const data = structured.data
     if (typeof data !== 'string' || !data) {
-      return errorResult('screenshot produced no image data', tool)
+      return errorResult('screenshot produced no image data', tool, ERROR_CODES.INTERNAL)
     }
-    // The image URL lets a chat client (the webui renders markdown) show the
-    // picture to the user, while the image bytes stay out of the model's
-    // context — only the short URL travels through the reply.
+    /** @type {Record<string, any>} */
     const extra = {}
     if (structured.imageUrl) extra.imageUrl = structured.imageUrl
     if (structured.imageUrlError) extra.imageUrlError = structured.imageUrlError
-    const hint = structured.imageUrl
-      ? 'Paste imageUrl into your reply as a markdown image so the user can see the screenshot.'
-      : undefined
-
-    const legacyPayload = {
-      ok: true,
-      contextId: structured.contextId,
-      mimeType: structured.mimeType || 'image/png',
-      encoding: 'base64',
-      bytes: data.length,
-      fullPage: !!structured.fullPage,
-      ...extra,
-    }
-    if (hint) legacyPayload.hint = hint
 
     return {
       content: [
         { type: 'image', data, mimeType: structured.mimeType || 'image/png' },
         {
           type: 'text',
-          text: isLegacy
-            ? prettyJson(legacyPayload)
-            : summarize(structured, {
-                summary:
-                  `screenshot captured (${structured.fullPage ? 'full page' : 'viewport'}, ${data.length} base64 chars)` +
-                  (structured.imageUrl ? ` — image url: ${structured.imageUrl}` : ''),
-              }),
+          text: summarize(structured, {
+            summary:
+              `screenshot captured (${structured.fullPage ? 'full page' : 'viewport'}, ${data.length} base64 chars)` +
+              (structured.imageUrl ? ` — image url: ${structured.imageUrl}` : ''),
+          }),
         },
       ],
       structuredContent: {
@@ -432,9 +291,8 @@ function toToolResult(result, tool) {
     content: [
       {
         type: 'text',
-        text: isLegacy
-          ? prettyJson(structured)
-          : tool && (tool.name === 'browser_captcha' || tool.name === 'browser_captcha_status')
+        text:
+          tool && (tool.name === 'browser_captcha' || tool.name === 'browser_captcha_status')
             ? summarizeCaptcha(structured)
             : tool && tool.name === 'browser_status'
               ? summarizeStatus(structured)
@@ -449,20 +307,15 @@ function toToolResult(result, tool) {
 /**
  * Build a failure result for a call that never reached the provider.
  *
- * The `error` text stays exactly as it was — that is the human-readable
- * contract. The `code` is added on top of it, so an agent can tell an
- * unknown tool from a bad argument from a crashed tool without matching
- * English.
- *
- * @param {string} text  the human-readable sentence
- * @param {object|null} tool  the tool it was for (null when unknown)
- * @param {string} code  one of ERROR_CODES
- * @returns {object}
+ * @param {string} text
+ * @param {Record<string, any>|null} tool
+ * @param {string} code
+ * @returns {Record<string, any>}
  */
 function errorResult(text, tool, code) {
   return {
     content: [{ type: 'text', text }],
-    structuredContent: { ok: false, code, error: text },
+    structuredContent: { ok: false, code, error: text, recovery: buildRecovery(code) },
     isError: true,
   }
 }
@@ -728,7 +581,7 @@ function socketIsLive(path, timeoutMs = 1500) {
  * It is OFF unless FIREFOX_BROWSER_CONTROL_SOCKET=1, and ON by default in
  * daemon mode, where it is the only transport the server has.
  *
- * @returns {Promise<object|null>}
+ * @returns {Promise<Record<string, any>|null>}
  */
 async function startControlSocket() {
   const enabled =

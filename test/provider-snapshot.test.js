@@ -310,4 +310,61 @@ describe('provider.snapshot', () => {
     assert.ok(vpCall)
     assert.equal(vpCall.params.devicePixelRatio, 3)
   })
+
+  test('format="compact" emits landmark-grouped tree and omits full elements array', async () => {
+    const client = fakeClient({
+      payload: {
+        elements: [
+          { ref: 'e0', role: 'link', name: 'Home', landmark: 'navigation' },
+          { ref: 'e1', role: 'textbox', name: 'Query', value: 'foxbidi', landmark: 'main' },
+          { ref: 'e2', role: 'button', name: 'Search', disabled: true, landmark: 'main' },
+        ],
+        total: 3,
+      },
+    })
+    const provider = providerWith(client)
+    const res = await provider.snapshot('ctx-1', { format: 'compact' })
+    assert.equal(res.ok, true)
+    assert.equal(res.elements, undefined)
+    assert.match(res.tree, /\[navigation\]\n {2}e0 link "Home"/)
+    assert.match(
+      res.tree,
+      /\[main\]\n {2}e1 textbox "Query" val="foxbidi"\n {2}e2 button "Search" \[disabled\]/,
+    )
+  })
+
+  test('deltaOnly=true omits full elements and reports unchanged when nothing changed', async () => {
+    const elements = [{ ref: 'e0', role: 'button', name: 'Save' }]
+    const client = fakeClient({ payload: { elements, total: 1 } })
+    const provider = providerWith(client)
+    const first = await provider.snapshot('ctx-1')
+    const second = await provider.snapshot('ctx-1', { since: first.snapshotId, deltaOnly: true })
+    assert.equal(second.ok, true)
+    assert.equal(second.elements, undefined)
+    assert.equal(second.unchanged, true)
+    assert.deepEqual(second.delta.added, [])
+    assert.deepEqual(second.delta.changed, [])
+    assert.deepEqual(second.delta.removed, [])
+  })
+
+  test('navigate with includeSnapshot=true attaches effect.snapshot in one round trip', async () => {
+    const client = fakeClient({
+      payload: { elements: [{ ref: 'e0', role: 'button', name: 'Sign in' }], total: 1 },
+      tree: [{ context: 'ctx-1', url: 'https://example.com/login', children: [] }],
+    })
+    const origSend = client.send.bind(client)
+    client.send = async (method, params) => {
+      if (method === 'browsingContext.navigate') {
+        return { navigation: 'nav-1', url: 'https://example.com/login' }
+      }
+      return origSend(method, params)
+    }
+    const provider = providerWith(client)
+    const res = await provider.navigate('https://example.com/login', 'ctx-1', 'complete', {
+      includeSnapshot: true,
+    })
+    assert.equal(res.ok, true)
+    assert.ok(Array.isArray(res.effect?.snapshot))
+    assert.equal(res.effect.snapshot[0].name, 'Sign in')
+  })
 })

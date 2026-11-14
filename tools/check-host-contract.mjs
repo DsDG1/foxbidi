@@ -194,7 +194,7 @@ export function stagePackage(source, target) {
  * THAT is what gets checked.
  *
  * @param {string} source
- * @returns {{ok: boolean, root: string, files: number, entries: number, totalBytes: number, violations: Array<object>}}
+ * @returns {{ok: boolean, root: string, files: number, entries: number, totalBytes: number, violations: Array<Record<string, any>>}}
  */
 export function checkPackageContract(source) {
   const staging = mkdtempSync(join(tmpdir(), 'foxbidi-contract-'))

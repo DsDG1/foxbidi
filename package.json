@@ -14,12 +14,23 @@
   "engines": {
     "node": ">=20"
   },
+  "imports": {
+    "#captcha-methods": {
+      "types": "./lib/types/captcha-methods.d.ts",
+      "default": "./lib/firefox/provider/captcha.js"
+    },
+    "#captcha-core": {
+      "types": "./lib/types/captcha-core.d.ts",
+      "default": "./lib/firefox/captcha.js"
+    }
+  },
   "scripts": {
     "test": "node --test test/*.test.js test/integration/*.test.js",
     "test:unit": "node --test test/*.test.js",
     "test:integration": "node --test test/integration/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.js test/integration/*.test.js",
     "lint": "eslint .",
+    "typecheck": "tsc --project jsconfig.json --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "validate": "node tools/validate-package.mjs",
@@ -29,8 +40,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@types/node": "^26.6.6",
     "eslint": "^9.39.5",
     "globals": "^16.5.0",
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "typescript": "^7.0.2"
   }
 }
